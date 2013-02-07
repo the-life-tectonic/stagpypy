@@ -75,9 +75,9 @@ class PBS(Job):
 			out.write("#PBS -l walltime=%s\n"%self.walltime)
 		elif type(self.walltime)==int:
 			hr=self.walltime/3600
-			min=(self.walltime-hr*3600)/60
-			sec=(self.walltime-hr*3600)-min*60
-			out.write("#PBS -l walltime=%02d:%02d:%02d\n"%(hr,min,sec))
+			minute=(self.walltime-hr*3600)/60
+			sec=(self.walltime-hr*3600)-minute*60
+			out.write("#PBS -l walltime=%02d:%02d:%02d\n"%(hr,minute,sec))
 		# allocate the cpu
 		out.write("#PBS -l size=%d\n"%self.alloc_cpus)
 		# set the account
@@ -125,9 +125,9 @@ class SGE(Job):
 			out.write('#$ -l h_rt=%s\n'%self.walltime)
 		elif type(self.walltime)==int:
 			hr=self.walltime/3600
-			min=(self.walltime-hr*3600)/60
-			sec=(self.walltime-hr*3600)-min*60
-			out.write('#$ -l h_rt=%02d:%02d:%02d\n'%(hr,min,sec))
+			minute=(self.walltime-hr*3600)/60
+			sec=(self.walltime-hr*3600)-minute*60
+			out.write('#$ -l h_rt=%02d:%02d:%02d\n'%(hr,minute,sec))
 		# allocate the cpu
 		out.write('#$ -pe %dway %d # tasks per node and total cores\n'%(self.way,self.alloc_cpus))
 		if self.alloc_cpus!=self.cpus: self.commands.insert(0,"export MY_NSLOTS=%d"%self.cpus)
@@ -136,7 +136,7 @@ class SGE(Job):
 		# set the queue
 		if self.queue!=None: out.write('#$ -q %s # queue\n'%self.queue.name)
 		# set the cwd
-		if self.cwd: out.write('#$ -cwd # start jobe in the current working directory\n')
+		if self.cwd: out.write('#$ -cwd # start job in the current working directory\n')
 		# set the environment and runtime directory
 		if self.current_env: out.write('#$ -V # Use current environment setting in batch job\n')
 		# set the name of stdout
@@ -151,6 +151,59 @@ class SGE(Job):
 		if self.notifications!=None : out.write("#$ -m %s\n" % ''.join(set([ c for c in self.notifications if c in 'abens' ])) )
 		# set the notification email address
 		if self.email!=None : out.write("#$ -M %s\n"%self.email)
+		# write the commands
+		out.write("\n\n")
+
+class SLURM(Job):
+	"""
+	Creates an SLURM batch job.
+	"""
+	def __init__(self,*args,**kwargs):
+		super(SLURM,self).__init__(*args,**kwargs)
+
+	def write(self,out=sys.stdout,incl_header=True):
+		# Set the shell
+		out.write('#!/bin/bash\n')
+		# Write the header
+		if incl_header: self.write_header(out)
+		# set the name
+		out.write('#SBATCH -J %s # job name\n'%self.name)
+		# set the walltime
+		if type(self.walltime)==str:
+			out.write('#SBATCH -t %s\n'%self.walltime)
+		elif type(self.walltime)==int:
+			hr=self.walltime/3600
+			minute=(self.walltime-hr*3600)/60
+			sec=(self.walltime-hr*3600)-minute*60
+			out.write('#SBATCH -t %02d:%02d:%02d\n'%(hr,minute,sec))
+		# allocate the cpu
+		out.write('#SBATCH -n %d # total number of mpi tasks\n'%self.cpus)
+		# set the account
+		out.write('#SBATCH -A %s # account\n'%self.account)
+		# set the queue
+		if self.queue!=None: out.write('#SBATCH -p %s # queue\n'%self.queue.name)
+		# set the cwd
+		if self.cwd: out.write('#SBATCH -cwd # start job in the current working directory\n')
+		# set the environment and runtime directory
+		if self.current_env: out.write('#SBATCH -V # Use current environment setting in batch job\n')
+		# set the name of stdout
+		if self.stdout!=None : out.write("#SBATCH -o %s\n"%self.stdout)
+		# set the name of stderr
+		if self.stderr!=None : out.write("#SBATCH -e %s\n"%self.stderr)
+		# combine stdout and stderr
+		#if self.combine_stdout_stderr : out.write("#SBATCH -j\n")
+		# use env when job was submitted
+		#if self.current_env : out.write("#SBATCH -V\n")
+		# set the notification level
+
+		if self.notifications!=None and len(self.notifications>0): 
+			if len(self.notifications>1):
+				notifications='ALL'
+			else:
+				notifications={'e':'END','b':'BEGIN','a':'FAIL','s':'FAIL'}[self.notifications]
+			out.write("#SBATCH --mail-type %s\n" % notifications)
+		# set the notification email address
+		if self.email!=None : out.write("#SBATCH --mail-user %s\n"%self.email)
 		# write the commands
 		out.write("\n\n")
 		for cmd in self.commands:
@@ -223,6 +276,13 @@ def ranger_options(kwargs):
 		kwargs['way']=16
 RANGER.set_options=ranger_options
 RANGER.allocate_cpus = lambda cpus: int(math.ceil(cpus/16.0)*16)
+
+STAMPEDE=System('Stampede', [Queue('normal',4096,24*3600),Queue('development',256,4*3600),Queue('serial',16,12*3600),Queue('large',16385,24*3600)], SLURM)
+def stampede_options(kwargs):
+	pass
+STAMPEDE.set_options=stampede_options
+STAMPEDE.mpi_exec=lambda cpus,mpi_command: "ibrun %s"%mpi_command 
+STAMPEDE.allocate_cpus = lambda cpus: int(math.ceil(cpus/16.0)*16)
 
 def get_job(system,name,walltime,cpus,account,mpi_command,**kwargs):
 # Select the correct sized queue from the system
