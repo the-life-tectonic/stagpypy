@@ -1,3 +1,4 @@
 # Ignore the build directories made by setup
+build/
 dist/
 stagyy.egg-info/

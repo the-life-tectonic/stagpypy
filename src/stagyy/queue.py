@@ -145,8 +145,6 @@ class SGE(Job):
 		if self.stderr!=None : out.write("#$ -e %s\n"%self.stderr)
 		# combine stdout and stderr
 		if self.combine_stdout_stderr : out.write("#$ -j\n")
-		# use env when job was submitted
-		if self.current_env : out.write("#$ -V\n")
 		# set the notification level
 		if self.notifications!=None : out.write("#$ -m %s\n" % ''.join(set([ c for c in self.notifications if c in 'abens' ])) )
 		# set the notification email address
@@ -183,21 +181,19 @@ class SLURM(Job):
 		# set the queue
 		if self.queue!=None: out.write('#SBATCH -p %s # queue\n'%self.queue.name)
 		# set the cwd
-		if self.cwd: out.write('#SBATCH -cwd # start job in the current working directory\n')
+		#if self.cwd: out.write('#SBATCH -cwd # start job in the current working directory\n')
 		# set the environment and runtime directory
-		if self.current_env: out.write('#SBATCH -V # Use current environment setting in batch job\n')
+		#if self.current_env: out.write('#SBATCH -V # Use current environment setting in batch job\n')
 		# set the name of stdout
 		if self.stdout!=None : out.write("#SBATCH -o %s\n"%self.stdout)
 		# set the name of stderr
 		if self.stderr!=None : out.write("#SBATCH -e %s\n"%self.stderr)
 		# combine stdout and stderr
 		#if self.combine_stdout_stderr : out.write("#SBATCH -j\n")
-		# use env when job was submitted
-		#if self.current_env : out.write("#SBATCH -V\n")
+		
 		# set the notification level
-
-		if self.notifications!=None and len(self.notifications>0): 
-			if len(self.notifications>1):
+		if self.notifications!=None and len(self.notifications)>0: 
+			if len(self.notifications)>1:
 				notifications='ALL'
 			else:
 				notifications={'e':'END','b':'BEGIN','a':'FAIL','s':'FAIL'}[self.notifications]
@@ -232,7 +228,7 @@ class Queue(object):
 		return self.max_cpus==other.max_cpus and self.max_walltime==other.max_walltime
 
 	def __ne__(self,other):
-		return not (self.max_cpus==other.max_cpus and self.max_walltime==other.max_walltime)
+		return not (type(other)==Queue and self.max_cpus==other.max_cpus and self.max_walltime==other.max_walltime)
 
 class System(object): 
 	def __init__(self,name,queues,scheduler):
@@ -287,6 +283,7 @@ STAMPEDE.allocate_cpus = lambda cpus: int(math.ceil(cpus/16.0)*16)
 def get_job(system,name,walltime,cpus,account,mpi_command,**kwargs):
 # Select the correct sized queue from the system
 	q=system.get_queue(cpus,walltime)
+	print("Got queue %s"%q);
 	system.set_options(kwargs)	
 	if 'commands' not in kwargs: kwargs['commands']=[]
 	kwargs['commands'].append(system.mpi_exec(cpus,mpi_command))
