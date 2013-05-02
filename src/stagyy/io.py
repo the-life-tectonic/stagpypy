@@ -520,6 +520,7 @@ def si_format(v,prefix):
 class Par(dict):
 	def __init__(self,par=None):
 		self.comments={}
+		self.errors=[]
 		self.sections=['switches','geometry','refstate','boundaries','t_init','timein','viscosity','iteration','multi','ioin','compin','melt','phase','continents','tracersin','plot']
 #		self.formats=
 #		{ 'viscosity': {'stressY_eta': 'mega', 'stress0_eta'}}
@@ -532,10 +533,10 @@ class Par(dict):
 		self.name=par
 		self.error=False
 		f=open(par)
-		try:
-			p=self # The par file dictionary
-			c=self.comments
-			for line in f:
+		p=self # The par file dictionary
+		c=self.comments
+		for line in f:
+			try:
 				line=line.strip()
 				if line=='&end' or len(line)==0:
 					pass
@@ -583,9 +584,11 @@ class Par(dict):
 								comment_section[name]=comment
 					else:
 						LOG_PAR.debug('Skipping line %s',line)
-		except:
-			LOG.error('Unable to parse par file %s',par,exc_info=True)
-			self.error=True
+			except:
+				LOG.warning('Unable to parse line: %s',line)
+				LOG.warning('Check the error array')
+				self.errors.append(sys.exc_info())
+				self.error=True
 		f.close()
 
 	def __getitem__(self,key):

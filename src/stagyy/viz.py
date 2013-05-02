@@ -11,7 +11,11 @@ from .constants import s_in_y
 LOG=logging.getLogger(__name__)
 
 def litho_colormap(min,max,boundary=1600.0,width=20):
-	b=(boundary-min)/(max-min)
+	if boundary<min or boundary>max:
+		bndry=max-50
+		b=(bndry-min)/(max-min)
+	else:
+		b=(boundary-min)/(max-min)
 
 	cdict  = {'red':  ((                  0.0, 0.0 , 0.0),
 					   (    (width-1)*b/width, 0.0 , 0.0),

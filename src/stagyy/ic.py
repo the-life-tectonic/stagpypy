@@ -3,20 +3,74 @@ import h5py
 import logging
 import os
 import sys
-from random import random
+import traceback
 from . import ui
 from .util import T_hs
 from .constants import s_in_y
 
 LOG=logging.getLogger(__name__)
 
-tt_harzburgite=0
-tt_solid_basalt=1
-tt_molten_basalt=2
-tt_air=3
-tt_prim=4
-tt_newly_melted_basalt=5
-tracer_types=[0,1,2,3,4,5]
+#
+# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+# ! WARNING    WARNING    WARNING   WARNING    WARNING    WARNING !
+# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+# The version of StagYY received from 12 Feb 2013 makes changes to
+# the numbering of the tracer types.  You must now activly make a call
+# to define the tracer types.
+#
+# Currently defined vintages are:
+#		pre12feb2013 - the tracer types used prior to the change in Stagyy
+#       12feb2013 - the tracer types used in the version from 12 Feb 2013
+#
+
+def selectTracers(when):
+	"""Selects the the vinatge of tracer values to use.
+       The version of StagYY received from 12 Feb 2013 makes changes to
+       the numbering of the tracer types.  You must now activly make a call
+       to define the tracer types.
+
+       Currently defined vintages are:
+           pre12feb2013 - the tracer types used prior to the change in Stagyy
+           12feb2013 - the tracer types used in the version from 12 Feb 2013
+"""
+	global tt_harzburgite 
+	global tt_solid_harzburgite 
+	global tt_solid_basalt
+	global tt_molten_harzburgite 
+	global tt_molten_basalt
+	global tt_newly_melted_basalt 
+	global tt_wants_to_freeze_basalt
+	global tt_air 
+	global tt_prim 
+	global tt_ccrust
+	global tt_erupting_basalt
+	global tt_intruding_basalt
+	global tracer_types
+
+	if when=='pre12feb2013':
+		tt_harzburgite=0
+		tt_solid_harzburgite=0
+		tt_solid_basalt=1
+		tt_molten_basalt=2
+		tt_air=3
+		tt_prim=4
+		tt_newly_melted_basalt=5
+		tracer_types=range(6)
+	elif when=='12feb2013':
+		tt_solid_harzburgite=0
+		tt_solid_basalt=1
+		tt_molten_harzburgite=2
+		tt_molten_basalt=3
+		tt_newly_melted_basalt=4
+		tt_wants_to_freeze_basalt=5
+		tt_air=6
+		tt_prim=7
+		tt_ccrust=8
+		tt_erupting_basalt=9
+		tt_intruding_basalt=10
+		tracer_types=range(11)
+	else:
+		sys.exit("Unkown tracer vintage %s."%when);
 
 
 class Scene(object):
@@ -94,20 +148,20 @@ class SceneObject(object):
 	def tracer(self,x,y,z,d):
 		return None
 
-class Crust(SceneObject):
-	def __init__(self,left,right,depth,front=0,back=0,tracer=tt_solid_basalt):
-		self.left=left
-		self.right=right
-		self.front=front
-		self.back=back
-		self.depth=depth
-		self.tra=tracer
-
-	def tracer(self,x,y,z,d):
-		if d>0 and d<=self.depth and x>=self.left and x<=self.right and y>=self.front and y<=self.back:
-			return self.tra
-		else:
-			return None
+#class Crust(SceneObject):
+#	def __init__(self,left,right,depth,front=0,back=0,tracer=tt_solid_basalt):
+#		self.left=left
+#		self.right=right
+#		self.front=front
+#		self.back=back
+#		self.depth=depth
+#		self.tra=tracer
+#
+#	def tracer(self,x,y,z,d):
+#		if d>0 and d<=self.depth and x>=self.left and x<=self.right and y>=self.front and y<=self.back:
+#			return self.tra
+#		else:
+#		return None
 
 
 class UpperPlate(SceneObject):
@@ -323,7 +377,7 @@ def calc_tracers(scene,tracers_per_cell):
 			if tracer!=None:
 				break
 		if tracer==None: 
-			tracer=tt_harzburgite if t[4]>scene.crust_depth else tt_solid_basalt
+			tracer=tt_solid_harzburgite if t[4]>scene.crust_depth else tt_solid_basalt
 		assert(tracer in tracer_types)
 		tra[i,3]=tracer
 		pb.progress(i)
@@ -339,10 +393,16 @@ def write_temp(out_dir,scene):
 	return filename
 
 def write_tracers(out_dir,scene,tracers_per_cell):
-	tracers=calc_tracers(scene,tracers_per_cell)
-	filename=os.path.join(out_dir,'init.h5')
-	h5file=h5py.File(filename)
-	#h5file.create_dataset('tracers', data=tracers,compression='gzip')
-	h5file.create_dataset('tracers', data=tracers,compression='gzip')
-	h5file.close()
+	try:
+		tracers=calc_tracers(scene,tracers_per_cell)
+		filename=os.path.join(out_dir,'init.h5')
+		h5file=h5py.File(filename)
+		#h5file.create_dataset('tracers', data=tracers,compression='gzip')
+		h5file.create_dataset('tracers', data=tracers,compression='gzip')
+		h5file.close()
+	except NameError as err:
+		sys.stderr.write('NameError encountered, perhaps tracer vintage was not set\n')
+		sys.stderr.write('Make sure you set tracer vintage using selectTracers(when)\n')
+		traceback.print_tb(err[2])
+		sys.exit()
 	return filename
