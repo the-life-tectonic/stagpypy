@@ -88,9 +88,10 @@ class Scene(object):
 	kappa=1e-6      : diffusivity (m^2 s^-1) {k/rho Cp}
 	T_surface=300.0 : Temperature at the surface (K)
 	T_mantle=1600.0 : Background mantle temperature (K)
+	Amp_T			: Amplitude of randomness to add to the Temp field (K)
 	"""
 	def __init__(self,L,N,alpha=3e-5,g=9.81,eta0=1e21,rho=3300.0,Cp=1200.0,k=3.0,kappa=1e-6,
-		         T_surface=300.0, T_mantle=1600.0, eta_air=1e18, air_layer=0.0,crust_depth=0.0):
+		         T_surface=300.0, T_mantle=1600.0, eta_air=1e18, air_layer=0.0,crust_depth=0.0,amp_T=0):
 		self.L=np.array(L)
 		self.N=np.array(N)
 		self.cells=reduce(lambda x,y: max(1,x)*max(1,y), self.N-1)
@@ -108,6 +109,7 @@ class Scene(object):
 		self.air_layer=air_layer
 		self.crust_depth=crust_depth
 		self.objects=[]
+		self.amp_T=amp_T
 
 	def add(self,o):
 		print('adding object %s'%o)
@@ -334,7 +336,7 @@ class Air(SceneObject):
 def calc_temp(scene):
 	N=scene.N
 	dx,dy,dz=scene.delta
-	temp=np.ones(N)*scene.T_mantle
+	temp=np.ones(N)*scene.T_mantle+(np.random.rand(*N)*scene.amp_T-scene.amp_T/2)
 	# The progress bar
 	total=N[0]*N[1]*N[2]*N[3]
 	i=0
