@@ -334,8 +334,15 @@ class Air(SceneObject):
 		return tt_air if d<=0 else None
 
 def calc_temp(scene):
-	N=scene.N
-	dx,dy,dz=scene.delta
+	N=scene.N.copy()
+	# if N[0]=1 the data is Y,Z but the objects expect X,Z so do some swapping
+	if scene.N[0]==1:
+		N[0]=scene.N[1]
+		N[1]=scene.N[0]
+		dy,dx,dz=scene.delta
+	else:
+		dx,dy,dz=scene.delta
+
 	temp=np.ones(N)*scene.T_mantle+(np.random.rand(*N)*scene.amp_T-scene.amp_T/2)
 	# The progress bar
 	total=N[0]*N[1]*N[2]*N[3]
@@ -357,6 +364,8 @@ def calc_temp(scene):
 						if T!=None:
 							temp[ix,iy,iz,ib]=T
 							break
+	if scene.N[0]==1:
+		temp=np.swapaxes(temp,0,1)
 	return temp
 
 def calc_tracers(scene,tracers_per_cell):
@@ -368,11 +377,19 @@ def calc_tracers(scene,tracers_per_cell):
 	tra[:,0]=(x.reshape(x.size)+np.random.random(x.size))*dx
 	tra[:,1]=(y.reshape(y.size)+np.random.random(y.size))*dy
 	tra[:,2]=(z.reshape(z.size)+np.random.random(z.size))*dz
-	tra[:,4]=scene.L[2]-tra[:,2]-scene.air_layer
+	tra[:,4]=scene.L[2]-tra[:,2]-scene.air_layer  # depth
+
+	# If nx=1, then swap x and y
+	if N[0]==1:
+		tmp=tra[:,0].copy()
+		tra[:,0]=tra[:,1]
+		tra[:,1]=tmp
 
 	# The progress bar
 	i=0
 	pb=ui.ProgressBar(total=total-1)
+	print("Total tracers = %d"%total)
+	print("Total allocated tracers = %d"%len(tra[:]))
 	for t in tra[:]:
 		for o in scene.objects:
 			tracer=o.tracer(t[0],t[1],t[2],t[4])
@@ -384,6 +401,10 @@ def calc_tracers(scene,tracers_per_cell):
 		tra[i,3]=tracer
 		pb.progress(i)
 		i+=1
+	if scene.N[0]==1:
+		tmp=tra[:,0].copy()
+		tra[:,0]=tra[:,1]
+		tra[:,1]=tmp
 	return tra[:,:4]
 
 def write_temp(out_dir,scene):
