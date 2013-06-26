@@ -1,12 +1,13 @@
 # vim: set fileencoding=utf-8
 import glob
+import h5py
+import itertools
 import logging 
 import numpy as np
 import os
 import re
 import sys
 import struct
-import h5py
 
 LOG=logging.getLogger(__name__)
 LOG_RN=logging.getLogger(__name__+'.read_native')
@@ -517,6 +518,73 @@ def si_format(v,prefix):
 # par file io routines
 #
 
+re_string_literal=re.compile("('.*?')")
+re_comma=re.compile("\s*,\s*")
+re_equal=re.compile("(\s*=\s*)")
+
+def parse_par_line(s):
+	tokens=[]
+	comment=''
+	# Remove any trailiing or leading white space
+	s=s.strip()
+
+	# Split the string into string literals and non-literals
+	tokens=re_string_literal.split(s)
+
+	# Look for comments
+	for n,t in enumerate(tokens):
+		if len(t)>2 and t[0]!="'" and t[-1]!="'" and t.find("!")>-1 :
+			a,b=t.split("!",1)
+			t=a.strip()
+			comment = b+ ''.join(tokens[(n+1):])
+			tokens=tokens[:n]
+			tokens.append(t)
+
+	# compact lists remove whitespace from commas and equal signs
+	# split tokens along white space
+	n=0
+	while n<len(tokens):
+		t=tokens[n]
+		if len(t)>2 and t[0]!="'" and t[-1]!="'":
+			if t.find(",")>-1 :
+				t=re_comma.sub(",",t)
+			if t.find("=")>-1 :
+				t=re_equal.sub("=",t)
+			tokenized=list(itertools.chain(*[t2.split() for t2 in re_equal.split(t)]))
+			tokens=tokens[:n]+tokenized+tokens[(n+1):]
+			n=n+len(tokenized)	
+		else:
+			n=n+1
+
+	# concatinate comma seperated values
+	n=0
+	while n<len(tokens):
+		if tokens[n]==",":
+			tokens=tokens[:(n-1)]+[tokens[n-1]+","+tokens[n+1]]+tokens[(n+2):]
+		n=n+1
+
+	name_value=[]	
+	try:
+		ndx=tokens.index("=")
+		while True:
+			name=tokens[ndx-1]
+			v=tokens[ndx+1]
+			# Convert the value to the approprate type
+			if len(v)>1 and v[0]=="'" and v[-1]=="'":
+				v=v[1:-1].split("','")
+			elif v.startswith(".true.") or v.startswith(".false."):
+				v=[v2==".true." for v2 in v.split(",")]
+			elif v.find(".")>-1 or v.find('e')>-1:
+				v=[float(v2) for v2 in v.split(",")]
+			else:
+				v=[int(v2) for v2 in v.split(",")]
+			if len(v)==1: v=v[0]
+			name_value.append( (name,v) )
+			ndx=tokens.index("=",ndx+1)
+	except ValueError:
+		pass
+	return name_value,comment
+
 class Par(dict):
 	def __init__(self,par=None):
 		self.comments={}
@@ -548,42 +616,11 @@ class Par(dict):
 					c[line[1:]]=comment_section={}
 				else:
 					LOG_PAR.debug('Processing line  %s',line)
-					comment=None
-					ndx=line.find('=')
-					if ndx!=-1:
-						name=line[0:ndx].strip()
-						value=line[(ndx+1):].strip()
-						if not '!' in name:
-							if value.startswith("'"):  # A String
-								ndx = value.find("'",1)
-								value=value[1:ndx]
-							else:
-								# Check for a string
-								if value.startswith("'"):
-									value=value[1,value.find("'",1)]
-								else:
-									# Trim comments
-									if '!' in value:
-										comment=value[value.find('!')+1:].strip()
-										value=value[0:value.find('!')].strip()
-
-									if value=='.true.':
-										value=True
-									elif value=='.false.':
-										value=False
-									elif '.' in value or 'e' in value:
-										value=[ float(v) for v in re.split("\s+",value) ]
-										if len(value)==1:
-											value=value[0]
-									else:
-										value=[ int(v) for v in re.split("\s+",value) ]
-										if len(value)==1:
-											value=value[0]
-							section[name]=value
-							if comment!=None:
-								comment_section[name]=comment
-					else:
-						LOG_PAR.debug('Skipping line %s',line)
+					tokens,comment=parse_par_line(line)
+					if comment!='':
+						comment_section[tokens[0][0]]=comment
+					for name,value in tokens:
+						section[name]=value
 			except:
 				LOG.warning('Unable to parse line: %s',line)
 				LOG.warning('Check the error array')
@@ -660,7 +697,7 @@ class Par(dict):
 					out.write('\n')
 			out.write('&end\n\n')
 			
-def par_diff(pars):
+def par_diff(pars,showdefaults=False):
 #	from sets import Set
 	if type(pars[0])==str:
 		pars=[Par(f) for f in pars]
@@ -679,8 +716,11 @@ def par_diff(pars):
 				try:
 					values.append(par[section][key])
 				except KeyError:
-					values.append('_NA_')
-			comp = [ v for v in values if v!='_NA_' ] # missing values don't count
+					values.append('_DEFAULT_')
+			if showdefaults:
+				comp = values
+			else:
+				comp = [ v for v in values if v!='_DEFAULT_' ] # missing values don't count
 			if comp[1:]!=comp[:-1]:
 				differences.append( { 'section':section,'key':key,'values':values } )
 	return differences	
