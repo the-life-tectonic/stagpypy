@@ -18,6 +18,9 @@ class Job(object):
 		self.notifications=notifications
 		self.email=email
 		self.commands=commands
+
+	def __str__(self,jobname=''):
+		return "<%s_job name:%s cpu:%d queue:%s walltime:%d>" % (jobname,self.name,self.cpus, self.queue, self.walltime)
 	
 	def write_header(self,out):
 		import getpass
@@ -36,6 +39,9 @@ class BASH(Job):
 	"""
 	def __init__(self,*args,**kwargs):
 		super(BASH,self).__init__(*args,**kwargs)
+
+	def __str__(self):
+		return super(BASH,self).__str__('bash')
 
 	def write(self,out=sys.stdout,incl_header=True):
 		# Set the shell
@@ -61,8 +67,12 @@ class PBS(Job):
 	Creates a PBS batch job
 	"""
 	def __init__(self,*args,**kwargs):
+		self.extension='pbs'
 		super(PBS,self).__init__(*args,**kwargs)
-		
+
+	def __str__(self):
+		return super(PBS,self).__str__('pbs')
+
 	def write(self,out=sys.stdout,incl_header=True):
 		# Set the shell
 		out.write('#!/bin/bash\n')
@@ -109,9 +119,13 @@ class SGE(Job):
 	Creates an SGE batch job.
 	"""
 	def __init__(self,*args,**kwargs):
+		self.extension='sge'
 		self.way=kwargs['way']
 		del kwargs['way']
 		super(SGE,self).__init__(*args,**kwargs)
+
+	def __str__(self):
+		return super(PBS,self).__str__('sge')
 
 	def write(self,out=sys.stdout,incl_header=True):
 		# Set the shell
@@ -157,7 +171,11 @@ class SLURM(Job):
 	Creates an SLURM batch job.
 	"""
 	def __init__(self,*args,**kwargs):
+		self.extension='sbat'
 		super(SLURM,self).__init__(*args,**kwargs)
+
+	def __str__(self):
+		return super(PBS,self).__str__('slurm')
 
 	def write(self,out=sys.stdout,incl_header=True):
 		# Set the shell
@@ -212,6 +230,9 @@ class Queue(object):
 		self.max_cpus=max_cpus
 		self.max_walltime=max_walltime
 
+	def __str__(self):
+		return "<Queue:%s>" % self.name
+
 	def __lt__(self,other):
 		return self.max_cpus<other.max_cpus or ( self.max_cpus==other.max_cpus and self.max_walltime<other.max_walltime)
 
@@ -235,6 +256,9 @@ class System(object):
 		self.name=name
 		self.queues=queues
 		self.scheduler=scheduler
+		
+	def __str__(self):
+		return "<System:%s>" % self.name
 
 	def set_options(self,kwargs):
 		pass;
@@ -248,6 +272,10 @@ class System(object):
 	def allocate_cpus(self,cpus):
 		return cpus
 
+_jms=dict()
+#
+#  Local system
+#
 LOCAL=System('Local Serial', [Queue('serial',2,1e6),Queue('mpi',2,1e6)], BASH)
 def local_mpi_exec(cpus,mpi_command):
 	cmd=''
@@ -257,28 +285,56 @@ def local_mpi_exec(cpus,mpi_command):
 		cmd="mpiexec -n %d %s 2>&1 | tee $OUT_FILE "%(cpus,mpi_command) 
 	return cmd
 LOCAL.mpi_exec=local_mpi_exec
+_jms['__DEFAULT__']=LOCAL
 
+#
+#  Kraken
+#
 KRAKEN=System('Kraken', [Queue('small',512,24*3600), Queue('medium',8192,24*3600), Queue('large',49536,24*3600), Queue('capability',98352,48*3600), Queue('dedicated',112896,48*3600)], PBS)
 KRAKEN.mpi_exec=lambda cpus,mpi_command: "aprun -n %d %s"%(cpus,mpi_command) 
 def kraken_options(kwargs): kwargs['current_env']=False
 KRAKEN.set_options=kraken_options
 KRAKEN.get_queue=lambda cpus,qalltime: None
 KRAKEN.allocate_cpus = lambda cpus: int(math.ceil(cpus/12.0)*12)
+_jms['kraken']=KRAKEN
 
-RANGER=System('Ranger', [Queue('normal',4096,24*3600) , Queue('long',1024,48*3600) , Queue('large',16384,24*3600) , Queue('development',256,2*3600) , Queue('serial',16,12*3600)], SGE)
-RANGER.mpi_exec=lambda cpus,mpi_command: "ibrun %s"%mpi_command 
-def ranger_options(kwargs): 
-	if 'way' not in kwargs:
-		kwargs['way']=16
-RANGER.set_options=ranger_options
-RANGER.allocate_cpus = lambda cpus: int(math.ceil(cpus/16.0)*16)
-
+#
+# Stampede
+#
 STAMPEDE=System('Stampede', [Queue('normal',4096,24*3600),Queue('development',256,4*3600),Queue('serial',16,12*3600),Queue('large',16385,24*3600)], SLURM)
 def stampede_options(kwargs):
 	pass
 STAMPEDE.set_options=stampede_options
 STAMPEDE.mpi_exec=lambda cpus,mpi_command: "ibrun %s"%mpi_command 
 STAMPEDE.allocate_cpus = lambda cpus: int(math.ceil(cpus/16.0)*16)
+_jms['stampede']=STAMPEDE
+
+# On February 4, 2013 the Ranger compute cluster and the Spur visualization cluster will be decommissioned
+#RANGER=System('Ranger', [Queue('normal',4096,24*3600) , Queue('long',1024,48*3600) , Queue('large',16384,24*3600) , Queue('development',256,2*3600) , Queue('serial',16,12*3600)], SGE)
+#RANGER.mpi_exec=lambda cpus,mpi_command: "ibrun %s"%mpi_command 
+#def ranger_options(kwargs): 
+#	if 'way' not in kwargs:
+#		kwargs['way']=16
+#RANGER.set_options=ranger_options
+#RANGER.allocate_cpus = lambda cpus: int(math.ceil(cpus/16.0)*16)
+
+def get_job_management_system():
+	import re
+	import socket
+	jms=None
+	hostname = socket.gethostname()
+	for regex in _jms.keys():
+		if len(re.findall(regex,hostname))>0:
+			jms=_jms[regex]
+			break
+	if jms==None:
+		jms=_jms['__DEFAULT__']
+	return jms
+
+
+
+
+
 
 def get_job(system,name,walltime,cpus,account,mpi_command,**kwargs):
 # Select the correct sized queue from the system
