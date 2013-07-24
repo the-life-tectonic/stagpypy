@@ -388,8 +388,6 @@ def calc_tracers(scene,tracers_per_cell):
 	# The progress bar
 	i=0
 	pb=ui.ProgressBar(total=total-1)
-	print("Total tracers = %d"%total)
-	print("Total allocated tracers = %d"%len(tra[:]))
 	for t in tra[:]:
 		for o in scene.objects:
 			tracer=o.tracer(t[0],t[1],t[2],t[4])
