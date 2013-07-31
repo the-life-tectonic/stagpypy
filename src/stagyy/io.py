@@ -209,7 +209,6 @@ def get_filename(prefix,field,frame):
 def frame_to_h5(directory,prefix,field,frame,out=None,overwrite=True):
 	return file_to_h5(get_filename(prefix,field,frame),field,out,overwrite)
 
-
 def file_to_h5(file,field,out=None,overwrite=True):
 	if out==None: out=os.path.dirname(file)
 	base=os.path.basename(file)
@@ -233,7 +232,6 @@ def file_to_h5(file,field,out=None,overwrite=True):
 		finally:
 			h5file.close()
 	return h5filename
-
 
 def read_native_frame(directory,prefix,frame,field):
 	suffix=field[0]
