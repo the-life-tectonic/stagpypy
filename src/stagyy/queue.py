@@ -38,6 +38,7 @@ class BASH(Job):
 	Creats a batch script that runs in serial
 	"""
 	def __init__(self,*args,**kwargs):
+		self.extension='sh'
 		super(BASH,self).__init__(*args,**kwargs)
 
 	def __str__(self):
