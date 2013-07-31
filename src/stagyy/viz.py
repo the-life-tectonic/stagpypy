@@ -85,7 +85,7 @@ def plot_frames_2D(frames,dataset,out,mm=None,title='',filter=lambda d: d,cmap=p
 		else:
 			LOG.debug("Skipping existing frame %s",plot_out)
 
-def plot_field_2D(file,out=None,filter=lambda d:d,cmap_func=lambda min,max: plt.get_cmap('jet')):
+def plot_field_2D(file,out=None,filter=lambda d:d,cmap_func=lambda min,max: plt.get_cmap('jet'),opts={}):
 	if out==None: out=os.path.dirname(file)
 	LOG.debug('Plotting file %s to %s',file,out)
 	# Open the hdf5 data
@@ -108,14 +108,18 @@ def plot_field_2D(file,out=None,filter=lambda d:d,cmap_func=lambda min,max: plt.
 	finally:
 		h5file.close()
 
-def plot_field_log_2D(file,out=None):
-	plot_field_2D(file,out=out,filter=lambda d: np.log10(d))
+def plot_field_log_2D(file,out=None,opts={}):
+	plot_field_2D(file,out=out,filter=lambda d: np.log10(d),opts=opts)
 
-def plot_viscosity_2D(file,out=None):
-	plot_field_2D(file,out=out,filter=lambda d: np.log10(d))
+def plot_viscosity_2D(file,out=None,opts={}):
+	plot_field_2D(file,out=out,filter=lambda d: np.log10(d),opts=opts)
 
-def plot_temp_2D(file,out=None):
-	plot_field_2D(file,out=out,cmap_func=lambda min,max: litho_colormap(min,max))
+def plot_temp_2D(file,out=None,opts={}):
+	if 'Tlitho' in opts:
+		boundary=float(opts['Tlitho'])
+	else:
+		boundary=1600.0
+	plot_field_2D(file,out=out,cmap_func=lambda min,max: litho_colormap(min,max,boundary))
 
 PLOTTERS_2D = {
 field.TEMP.prefix: plot_temp_2D,
@@ -124,7 +128,7 @@ field.VISCOSITY.prefix: plot_viscosity_2D,
 field.DENSITY.prefix: plot_field_2D,
 }
 
-def plot_2D(file,out=None):
+def plot_2D(file,out=None,opts={}):
 	h5file=h5py.File(file,'r')
 	plotter=None
 	try:
@@ -133,5 +137,5 @@ def plot_2D(file,out=None):
 	finally:
 		h5file.close()
 	if plotter:
-		plotter(file,out)
+		plotter(file,out=out,opts=opts)
 

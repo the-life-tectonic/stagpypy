@@ -340,7 +340,6 @@ def get_job_management_system():
 def get_job(system,name,walltime,cpus,account,mpi_command,**kwargs):
 # Select the correct sized queue from the system
 	q=system.get_queue(cpus,walltime)
-	print("Got queue %s"%q);
 	system.set_options(kwargs)	
 	if 'commands' not in kwargs: kwargs['commands']=[]
 	kwargs['commands'].append(system.mpi_exec(cpus,mpi_command))

@@ -112,7 +112,6 @@ class Scene(object):
         self.amp_T=amp_T
 
     def add(self,o):
-        print('adding object %s'%o)
         if not isinstance(o,SceneObject):
             raise TypeError("SceneObject expected, got %s"%o.__class__)
         self.objects.append(o)
@@ -232,7 +231,6 @@ class Plate(SceneObject):
             #self.in_bend = lambda x: x>=trench-self.r*np.sin(self.theta) and x<=trench
         self.scene=scene
         age=abs(ridge-trench)/v
-        print("The age at the trench is %0.2f MA"%(age/s_in_y/1e6))
 
     def set_scene(self,scene):
         self.scene=scene
