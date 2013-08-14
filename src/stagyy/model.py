@@ -43,7 +43,7 @@ class Suite(object):
                 else:
                     self.fields=self.fields&set(m.fields)
             except:
-                LOG.error('Unable to process model %s',model_dir,exc_info=True)
+                LOG.error('Unable to process model "%s"',model_dir,exc_info=True)
         self.models=[self.model_map[model_name] for model_name in sorted(self.model_map.keys())]
         self.max_last_timestep=max([m.last_timestep for m in self.models])
         self.min_last_timestep=min([m.last_timestep for m in self.models])
@@ -141,62 +141,91 @@ def field_to_h5(h5_filename, output_file_stem, field, shape, frames, overwrite=F
     LOG.debug('H5 itmes: %s',str(h5_file.items()))
     frame_start=0
 
-    # Existing file
-    if 'frame' in h5_file:
-        frame_start=len(h5_file['frame'])
-        LOG.debug('There are %d existing frames',frame_start)
+    try:
+        # Existing file
+        if 'frame' in h5_file:
+            frame_start=len(h5_file['frame'])
+            LOG.debug('There are %d existing frames',frame_start)
+            if frame_start<frames:
+                LOG.debug('Processing an additional %d frames',frames-frame_start);
+                frameDSet=h5_file['frame']
+                frameDSet.resize((frames,2))
+                dataDSet=h5_file['data']
+                dataDSet.resize((frames,)+shape)
+                fmax=dataDSet.attrs['max']
+                fmin=dataDSet.attrs['min']
+                xDSet=h5_file['x']
+                yDSet=h5_file['y']
+                zDSet=h5_file['z']
+                xyzDSet=h5_file['xyz']
+        else: # a new file
+            LOG.debug("'frame' dataset not found, assuming a new file")
+            # The file attribues
+            h5_file.attrs['field']=field.name
+            # The data dataset
+            if field.scalar:
+                dataDSet=h5_file.create_dataset('data', (frames,)+shape,compression='gzip', compression_opts=4,maxshape=(None,)+shape)
+#            dataDSet.attrs['prefix']=field.prefix
+#            dataDSet.attrs['scalar']=field.scalar
+#            dataDSet.attrs['fieldname']=field.name
+            else: # this is Vx, Vy, Vz and p (pressure)
+                vxDSet=h5_file.create_dataset('vx', (frames,)+shape,compression='gzip', compression_opts=4,maxshape=(None,)+shape)
+                vyDSet=h5_file.create_dataset('vy', (frames,)+shape,compression='gzip', compression_opts=4,maxshape=(None,)+shape)
+                vzDSet=h5_file.create_dataset('vz', (frames,)+shape,compression='gzip', compression_opts=4,maxshape=(None,)+shape)
+                pDSet= h5_file.create_dataset('p',  (frames,)+shape,compression='gzip', compression_opts=4,maxshape=(None,)+shape)
+#           dataDSet.attrs['prefix']=field.prefix
+#           dataDSet.attrs['scalar']=field.scalar
+#           dataDSet.attrs['fieldname']=field.name
+
+            # The frame dataset
+            frameDSet=h5_file.create_dataset('frame', (frames,2) ,compression='gzip', compression_opts=4,maxshape=(None,2))
+            # The x,y,z grid centers
+            xDSet=h5_file.create_dataset('x', (shape[0],),compression='gzip',compression_opts=4)
+            yDSet=h5_file.create_dataset('y', (shape[1],),compression='gzip',compression_opts=4)
+            zDSet=h5_file.create_dataset('z', (shape[2],),compression='gzip',compression_opts=4)
+            xyzDSet=h5_file.create_dataset('xyz', (reduce(lambda a,b: a*b, shape),3),compression='gzip',compression_opts=4)
+            fmax=sys.float_info.min
+            fmin=sys.float_info.max
+
+        LOG.debug('Starting with frame %d to frame %d',frame_start,frames-1)
+
+        frame_pattern=output_file_stem+'_'+field.prefix+'%05d'
+
         if frame_start<frames:
-            LOG.debug('Processing an additional %d frames',frames-frame_start);
-            frameDSet=h5_file['frame']
-            frameDSet.resize((frames,2))
-            dataDSet=h5_file['data']
-            dataDSet.resize((frames,)+shape)
-            fmax=dataDSet.attrs['max']
-            fmin=dataDSet.attrs['min']
-            xDSet=h5_file['x']
-            yDSet=h5_file['y']
-            zDSet=h5_file['z']
-    else: # a new file
-        LOG.debug("'frame' dataset not found, assuming a new file")
-        # The file attribues
-        h5_file.attrs['field']=field.name
-        # The data dataset
-        dataDSet=h5_file.create_dataset('data', (frames,)+shape,compression='gzip', compression_opts=4,maxshape=(None,)+shape)
-        dataDSet.attrs['prefix']=field.prefix
-        dataDSet.attrs['scalar']=field.scalar
-        dataDSet.attrs['fieldname']=field.name
-        # The frame dataset
-        frameDSet=h5_file.create_dataset('frame', (frames,2) ,compression='gzip', compression_opts=4,maxshape=(None,2))
-        # The x,y,z grid centers
-        xDSet=h5_file.create_dataset('x', (shape[0],),compression='gzip',compression_opts=4)
-        yDSet=h5_file.create_dataset('y', (shape[1],),compression='gzip',compression_opts=4)
-        zDSet=h5_file.create_dataset('z', (shape[2],),compression='gzip',compression_opts=4)
-        fmax=sys.float_info.min
-        fmin=sys.float_info.max
+            for frame in range(frame_start,frames):
+                file=frame_pattern%frame
+                LOG.debug('Reading native file %s',file)
+                if not os.path.exists(file):
+                    LOG.warting('Native file "%s" does not exist, though %d frames expected starting at %d' % (file,frames,frame_start))
+                d,step,time,x,y,z=read_native(file,field.scalar)
+                if field.scalar:
+                    LOG.debug("Raw data has the shape: %s",str(d.shape))
+                    fmax=max(fmax,d.max())
+                    fmin=min(fmin,d.min())
+                    dataDSet[frame]=d
+                    LOG.debug('(min,max)=(%f,%f)',fmin,fmax)
+                else:
+                    vx,vy,vz,p=d
+                    vxDSet[frame]=vx
+                    vyDSet[frame]=vy
+                    vzDSet[frame]=vz
+                    pDSet[frame]=p
+                   
+                # The timestamp info
+                frameDSet[frame,0]=step
+                frameDSet[frame,1]=time
 
-    LOG.debug('Starting with frame %d to frame %d',frame_start,frames-1)
-
-    frame_pattern=output_file_stem+'_'+field.prefix+'%05d'
-
-    if frame_start<frames:
-        for frame in range(frame_start,frames):
-            file=frame_pattern%frame
-            LOG.debug('Reading native file %s',file)
-            d,step,time,x,y,z=read_native(file,field.scalar)
-            LOG.debug("Raw data has the shape: %s",str(d.shape))
-            fmax=max(fmax,d.max())
-            fmin=min(fmin,d.min())
-            LOG.debug('(min,max)=(%f,%f)',fmin,fmax)
-            # copy the data
-            dataDSet[frame]=d
-            frameDSet[frame,0]=step
-            frameDSet[frame,1]=time
-        dataDSet.attrs['max']=fmax
-        dataDSet.attrs['min']=fmin
-        xDSet[:]=x[:]
-        yDSet[:]=y[:]
-        zDSet[:]=z[:]
-    h5_file.close()
+            if field.scalar:
+                dataDSet.attrs['max']=fmax
+                dataDSet.attrs['min']=fmin
+            xDSet[:]=x[:]
+            yDSet[:]=y[:]
+            zDSet[:]=z[:]
+            xyzDSet[:]=xyz_2_location(x,y,z)
+    except:
+        LOG.exeception("Exception coverting native to h5")
+    finally: 
+        h5_file.close()
     return h5_filename,frames-frame_start
 
 def get_filename(prefix,field,frame):
@@ -232,27 +261,39 @@ def file_to_h5(file,field,out=None,overwrite=True):
             h5file.close()
     return h5filename
 
+def xyz_2_location(x,y,z):
+    """Takes x,y,z array of location and retuns a matrix of size (x*y*z,3) with the X,Y,Z location for every point"""
+    X,Y,Z=np.meshgrid(x,y,z,indexing='ij')
+    return np.column_stack((X.flatten(),Y.flatten(),Z.flatten()))
+
+def r_theta_phi_2_location(r,theta,phi,dim_r):
+    pass
+
+    
 def read_native_frame(directory,prefix,frame,field):
     suffix=field[0]
     scalar=field[1]
     filename=os.path.join(directory,prefix+suffix+'%05d'%frame)
     read_native(filename,scalar)
 
-def read_native(filename,scalar):
-    LOG.debug("Reading %s data from %s",'scalar' if scalar else 'vector',filename)
+def read_native(filename,scalar=None):
+    LOG.debug("Reading data from %s",filename)
     if not os.path.exists(filename):
         raise IOError('File not found: %s',filename)
     try:
         f=open(filename,'rb')
         ver=read_int32(f)
         LOG_RN.debug('Version: %d',ver)
-        nval = 1 if scalar else 4
+        if scalar!=None:
+            nval=1 if scalar else 4
+        else:
+            if ver < 100:
+                nval=1
+            elif ver>300:
+                nval=4
         LOG_RN.debug('Each value has %d component(s)',nval)
-        # TODO automatically determine of the field is scalar or not
-        if (ver<100 and nval>1) or (ver>300 and nval==1):
-            raise IOError('Incorrect number of components for field: %d, scalar=%s'%(nval,scalar))
-        ver=ver%100
         # extra ghost point in the x and y directions
+        ver=ver%100
         xyp=1 if ver>=9 and nval==4 else 0
 
         nxtot,nytot,nztot,nblocks=read_int32(f,4)
@@ -265,7 +306,7 @@ def read_native(filename,scalar):
         nz2 = nztot*2 + 1 # zg is the center and bottom of the cells + the top of the first cell
         zg = read_float32(f,nz2) # z-coordinates
         LOG_RN.debug('len(zg) = %d\n',len(zg))
-        LOG_RN.debug('zg=%s',str(zg))
+        #LOG_RN.debug('zg=%s',str(zg))
 
         # compute nx, ny, nz and nb PER CPU
         nx = nxtot/nnx
@@ -275,14 +316,6 @@ def read_native(filename,scalar):
         npi = (nx+xyp)*(ny+xyp)*nz*nb*nval # the number of values per 'read' block
         LOG_RN.debug('[nx,ny,nz,nb] = [%d,%d,%d,%d]',nx,ny,nz,nb)
         LOG_RN.debug('npi = %d',npi)
-        #       nxr=np.arange(nx)
-        #       nyr=np.arange(ny)
-        #       nzr=np.arange(nz)
-        #       nbr=np.arange(nb)
-        #       LOG_RN.debug("nxr=%s",nxr)
-        #       LOG_RN.debug("nyr=%s",nyr)
-        #       LOG_RN.debug("nzr=%s",nzr)
-        #       LOG_RN.debug("nbr=%s",nbr)
 
         rcmb = read_float32(f)
         istep = read_int32(f)
@@ -306,7 +339,7 @@ def read_native(filename,scalar):
         LOG_RN.debug('z=%s',str(z))
 
         # read the parallel blocks
-        if scalar:
+        if nval==1:
             DATA_3D = np.zeros((nxtot,nytot,nztot));
         else:
             scale_fac= read_float32(f)             # scale factor
@@ -331,7 +364,7 @@ def read_native(filename,scalar):
                         LOG_RN.debug('First 4 elements : %s',data_CPU[0:5])
                         # Create a 3D matrix from these data
 
-                        if scalar:
+                        if nval==1:
                             data_CPU_3D=data_CPU.reshape( (nx,ny,nz),order='F');                   
                             LOG_RN.debug('shape data_CPU_3D: %s',str(data_CPU_3D.shape))
 #                           DATA_3D((ixc-1)*nx + (1:nx), (iyc-1)*ny + (1:ny), (izc-1)*nz + (1:nz),(ibc-1)*nb + (1:nb)) = data_CPU_3D; 
@@ -370,7 +403,7 @@ def read_native(filename,scalar):
         f.close()
     return DATA_3D,istep,time,x,y,z
 
-def read_tracers(filename,callback=None):
+def read_tracers(filename,callback=lambda x: None):
     tracers=None
     LOG_TRA.debug("\nOpening %s"%filename)
     f=open(filename);
@@ -422,7 +455,7 @@ def read_tracers(filename,callback=None):
         for ib in range(nb_in):
             for i in range(ntrg):
                 t[i]=read_float32(f,ntracervar_in)
-                if callback!=None: callback(100*float(i)/float(ntrg))
+                callback(100*float(i)/float(ntrg))
         tracers={}
         tracers['magic']=magic
         tracers['blocks']=nb_in
@@ -544,8 +577,10 @@ def parse_par_line(s):
     while n<len(tokens):
         t=tokens[n]
         if len(t)>2 and t[0]!="'" and t[-1]!="'":
+            # Remove space around any commas
             if t.find(",")>-1 :
                 t=re_comma.sub(",",t)
+            # Remove space around any equals
             if t.find("=")>-1 :
                 t=re_equal.sub("=",t)
             tokenized=list(itertools.chain(*[t2.split() for t2 in re_equal.split(t)]))
@@ -601,7 +636,8 @@ class Par(dict):
         f=open(par)
         p=self # The par file dictionary
         c=self.comments
-        for line in f:
+        c['__file__']=comment_section={}
+        for line_no,line in enumerate(f):
             try:
                 line=line.strip()
                 if line=='&end' or len(line)==0:
@@ -616,11 +652,14 @@ class Par(dict):
                     LOG_PAR.debug('Processing line  %s',line)
                     tokens,comment=parse_par_line(line)
                     if comment!='':
-                        comment_section[tokens[0][0]]=comment
+                        try:
+                            comment_section[tokens[0][0]]=comment
+                        except IndexError:
+                            comment_section["line %d" % line_no] = comment
                     for name,value in tokens:
                         section[name]=value
             except:
-                LOG.warning('Unable to parse line: %s',line)
+                LOG.warning('Unable to parse line: "%s"',line)
                 LOG.warning('Check the error array')
                 self.errors.append(sys.exc_info())
                 self.error=True
