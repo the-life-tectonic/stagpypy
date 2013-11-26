@@ -99,12 +99,28 @@ class Model(object):
         # The timestep file
         self.timestep_filename=os.path.join(model_dir,self.output_file_stem+'_time.dat')
         self.timesteps=Timesteps(self.timestep_filename)
-        self.last_timestep=int(self.timesteps.istep[-1])
-        self.total_timesteps=self.last_timestep+1
-        self.frames=self.last_timestep/self.nwrite+1
+        if len(self.timesteps)>1:
+            self.last_timestep=int(self.timesteps.istep[-1])
+            self.total_timesteps=self.last_timestep+1
+            self.frames=self.last_timestep/self.nwrite+1
+        else: # no timesteps
+            self.last_timestep=-1
+            self.total_timesteps=0
+            self.frames=0
 
         # The available fields
         self.fields=sorted(set([ f[len(self.output_file_stem_path)+1:-5] for f in glob.glob(self.output_file_stem_path+'_*[0-9][0-9][0-9][0-9][0-9]') ]))
+
+def suite_to_h5(suite,dest,fields):
+	if not os.path.exists(dest):
+		os.makedirs(dest)
+
+	for model in suite.models:
+		# make the data directory
+		data_dir=os.path.join(dest,model.name,'data')
+		if not os.path.exists(data_dir):
+			os.makedirs(data_dir)
+		model_to_h5(model,data_dir,fields)
 
 
 def model_to_h5(model,dest,fields):
@@ -150,14 +166,24 @@ def field_to_h5(h5_filename, output_file_stem, field, shape, frames, overwrite=F
                 LOG.debug('Processing an additional %d frames',frames-frame_start);
                 frameDSet=h5_file['frame']
                 frameDSet.resize((frames,2))
-                dataDSet=h5_file['data']
-                dataDSet.resize((frames,)+shape)
-                fmax=dataDSet.attrs['max']
-                fmin=dataDSet.attrs['min']
+                if field.scalar:
+                    dataDSet=h5_file['data']
+                    dataDSet.resize((frames,)+shape)
+                    fmax=dataDSet.attrs['max']
+                    fmin=dataDSet.attrs['min']
+                else: # this is Vx, Vy, Vz and p (pressure)
+                    vxDSet=h5_file['vx']
+                    vxDSet.resize((frames,)+shape)
+                    vyDSet=h5_file['vy']
+                    vyDSet.resize((frames,)+shape)
+                    vzDSet=h5_file['vz']
+                    vzDSet.resize((frames,)+shape)
+                    pDSet=h5_file['p']
+                    pDSet.resize((frames,)+shape)
                 xDSet=h5_file['x']
                 yDSet=h5_file['y']
                 zDSet=h5_file['z']
-                xyzDSet=h5_file['xyz']
+                #xyzDSet=h5_file['xyz']
         else: # a new file
             LOG.debug("'frame' dataset not found, assuming a new file")
             # The file attribues
@@ -183,7 +209,7 @@ def field_to_h5(h5_filename, output_file_stem, field, shape, frames, overwrite=F
             xDSet=h5_file.create_dataset('x', (shape[0],),compression='gzip',compression_opts=4)
             yDSet=h5_file.create_dataset('y', (shape[1],),compression='gzip',compression_opts=4)
             zDSet=h5_file.create_dataset('z', (shape[2],),compression='gzip',compression_opts=4)
-            xyzDSet=h5_file.create_dataset('xyz', (reduce(lambda a,b: a*b, shape),3),compression='gzip',compression_opts=4)
+            #xyzDSet=h5_file.create_dataset('xyz', (reduce(lambda a,b: a*b, shape),3),compression='gzip',compression_opts=4)
             fmax=sys.float_info.min
             fmin=sys.float_info.max
 
@@ -196,24 +222,27 @@ def field_to_h5(h5_filename, output_file_stem, field, shape, frames, overwrite=F
                 file=frame_pattern%frame
                 LOG.debug('Reading native file %s',file)
                 if not os.path.exists(file):
-                    LOG.warting('Native file "%s" does not exist, though %d frames expected starting at %d' % (file,frames,frame_start))
-                d,step,time,x,y,z=read_native(file,field.scalar)
-                if field.scalar:
-                    LOG.debug("Raw data has the shape: %s",str(d.shape))
-                    fmax=max(fmax,d.max())
-                    fmin=min(fmin,d.min())
-                    dataDSet[frame]=d
-                    LOG.debug('(min,max)=(%f,%f)',fmin,fmax)
-                else:
-                    vx,vy,vz,p=d
-                    vxDSet[frame]=vx
-                    vyDSet[frame]=vy
-                    vzDSet[frame]=vz
-                    pDSet[frame]=p
-                   
-                # The timestamp info
-                frameDSet[frame,0]=step
-                frameDSet[frame,1]=time
+                    LOG.warning('Native file "%s" does not exist, though %d frames expected starting at %d' % (file,frames,frame_start))
+                try:
+                    d,step,time,x,y,z=read_native(file,field.scalar)
+                    if field.scalar:
+                        LOG.debug("Raw data has the shape: %s",str(d.shape))
+                        fmax=max(fmax,d.max())
+                        fmin=min(fmin,d.min())
+                        dataDSet[frame]=d
+                        LOG.debug('(min,max)=(%f,%f)',fmin,fmax)
+                    else:
+                        vx,vy,vz,p=d
+                        vxDSet[frame]=vx
+                        vyDSet[frame]=vy
+                        vzDSet[frame]=vz
+                        pDSet[frame]=p
+                       
+                    # The timestamp info
+                    frameDSet[frame,0]=step
+                    frameDSet[frame,1]=time
+                except:
+                    LOG.exception('Exception reading native field %s, frame %d, from file %s' % (field.name,frame,file))
 
             if field.scalar:
                 dataDSet.attrs['max']=fmax
@@ -221,9 +250,9 @@ def field_to_h5(h5_filename, output_file_stem, field, shape, frames, overwrite=F
             xDSet[:]=x[:]
             yDSet[:]=y[:]
             zDSet[:]=z[:]
-            xyzDSet[:]=xyz_2_location(x,y,z)
+            #xyzDSet[:]=xyz_2_location(x,y,z)
     except:
-        LOG.exeception("Exception coverting native to h5")
+        LOG.exception("Exception coverting native to h5")
     finally: 
         h5_file.close()
     return h5_filename,frames-frame_start
@@ -277,7 +306,7 @@ def read_native_frame(directory,prefix,frame,field):
     read_native(filename,scalar)
 
 def read_native(filename,scalar=None):
-    LOG.debug("Reading data from %s",filename)
+    LOG_RN.debug("Reading data from %s",filename)
     if not os.path.exists(filename):
         raise IOError('File not found: %s',filename)
     try:
@@ -630,10 +659,10 @@ class Par(dict):
             return
         if os.path.isdir(par):
             par=os.path.join(par,'par')
-        LOG.debug('Reading par file %s',par)
+        LOG_PAR.debug('Reading par file %s',par)
         self.name=par
         self.error=False
-        f=open(par)
+        f=open(par,'r')
         p=self # The par file dictionary
         c=self.comments
         c['__file__']=comment_section={}
@@ -659,8 +688,8 @@ class Par(dict):
                     for name,value in tokens:
                         section[name]=value
             except:
-                LOG.warning('Unable to parse line: "%s"',line)
-                LOG.warning('Check the error array')
+                LOG_PAR.warning('Unable to parse line: "%s"',line)
+                LOG_PAR.warning('Check the error array')
                 self.errors.append(sys.exc_info())
                 self.error=True
         f.close()
