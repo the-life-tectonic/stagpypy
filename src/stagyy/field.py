@@ -15,8 +15,8 @@ MELT_FRACTION=Field('f',True,'melt fraction')
 STRAIN_RATE=Field('ed',True,'strain rate')
 TEMP=Field('t',True,'temp')
 TOPOGRAPHY=Field('cs',True,'topography')
-TOPO_SELF_GRAVITY=Field('csg',True,'selfgravity')
-VELOCITY_FIELD=Field('vp',False,'velocity')
+TOPO_SELF_GRAVITY=Field('csg',True,'self-gravity')
+VELOCITY_FIELD=Field('vp',False,'velocity and pressure')
 VISCOSITY=Field('eta',True,'viscosity')
 
 by_prefix={
