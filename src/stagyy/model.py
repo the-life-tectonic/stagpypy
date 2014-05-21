@@ -123,7 +123,7 @@ def suite_to_h5(suite,dest,fields):
 		model_to_h5(model,data_dir,fields)
 
 
-def model_to_h5(model,dest,fields):
+def model_to_h5(model,dest,fields, overwrite=False):
     # Calculate the number of timesteps
     LOG.debug('The model run completed %d timesteps',model.total_timesteps)
     LOG.debug('There should be %d frames available',model.frames)
@@ -131,7 +131,7 @@ def model_to_h5(model,dest,fields):
     for field in fields:
         LOG.debug('Processing field %s',field.name)
         h5_filename=os.path.join(dest,get_h5_filename(model,field))
-        frame_count=field_to_h5( h5_filename, os.path.join(model.dir,model.output_file_stem), field, model.grid_size, model.frames)
+        frame_count=field_to_h5( h5_filename, os.path.join(model.dir,model.output_file_stem), field, model.grid_size, model.frames, overwrite)
         result.append({'field': field.name, 'filename': h5_filename, 'frames': frame_count})
     return result
 
@@ -158,8 +158,7 @@ def field_to_h5(h5_filename, output_file_stem, field, shape, frames, overwrite=F
     frame_start=0
 
     try:
-        # Existing file
-        if 'frame' in h5_file:
+        if 'frame' in h5_file: # Existing file
             frame_start=len(h5_file['frame'])
             LOG.debug('There are %d existing frames',frame_start)
             if frame_start<frames:
@@ -174,15 +173,33 @@ def field_to_h5(h5_filename, output_file_stem, field, shape, frames, overwrite=F
                 else: # this is Vx, Vy, Vz and p (pressure)
                     vxDSet=h5_file['vx']
                     vxDSet.resize((frames,)+shape)
+                    vxmax=vxDSet.attrs['max']
+                    vxmin=vxDSet.attrs['min']
+
                     vyDSet=h5_file['vy']
                     vyDSet.resize((frames,)+shape)
+                    vymax=vyDSet.attrs['max']
+                    vymin=vyDSet.attrs['min']
+
                     vzDSet=h5_file['vz']
                     vzDSet.resize((frames,)+shape)
+                    vzmax=vzDSet.attrs['max']
+                    vzmin=vzDSet.attrs['min']
+
+                    vDSet=h5_file['v']
+                    vDSet.resize((frames,)+shape)
+                    vmax=vDSet.attrs['max']
+                    vmin=vDSet.attrs['min']
+
                     pDSet=h5_file['p']
                     pDSet.resize((frames,)+shape)
+                    pmax=pDSet.attrs['max']
+                    pmin=pDSet.attrs['min']
+
                 xDSet=h5_file['x']
                 yDSet=h5_file['y']
                 zDSet=h5_file['z']
+                zgDSet=h5_file['zg']
                 #xyzDSet=h5_file['xyz']
         else: # a new file
             LOG.debug("'frame' dataset not found, assuming a new file")
@@ -191,17 +208,24 @@ def field_to_h5(h5_filename, output_file_stem, field, shape, frames, overwrite=F
             # The data dataset
             if field.scalar:
                 dataDSet=h5_file.create_dataset('data', (frames,)+shape,compression='gzip', compression_opts=4,maxshape=(None,)+shape)
-#            dataDSet.attrs['prefix']=field.prefix
-#            dataDSet.attrs['scalar']=field.scalar
-#            dataDSet.attrs['fieldname']=field.name
+                fmax=sys.float_info.min
+                fmin=sys.float_info.max
             else: # this is Vx, Vy, Vz and p (pressure)
                 vxDSet=h5_file.create_dataset('vx', (frames,)+shape,compression='gzip', compression_opts=4,maxshape=(None,)+shape)
+                vxmax=sys.float_info.min
+                vxmin=sys.float_info.max
                 vyDSet=h5_file.create_dataset('vy', (frames,)+shape,compression='gzip', compression_opts=4,maxshape=(None,)+shape)
+                vymax=sys.float_info.min
+                vymin=sys.float_info.max
                 vzDSet=h5_file.create_dataset('vz', (frames,)+shape,compression='gzip', compression_opts=4,maxshape=(None,)+shape)
+                vzmax=sys.float_info.min
+                vzmin=sys.float_info.max
+                vDSet=h5_file.create_dataset('v', (frames,)+shape,compression='gzip', compression_opts=4,maxshape=(None,)+shape)
+                vmax=sys.float_info.min
+                vmin=sys.float_info.max
                 pDSet= h5_file.create_dataset('p',  (frames,)+shape,compression='gzip', compression_opts=4,maxshape=(None,)+shape)
-#           dataDSet.attrs['prefix']=field.prefix
-#           dataDSet.attrs['scalar']=field.scalar
-#           dataDSet.attrs['fieldname']=field.name
+                pmax=sys.float_info.min
+                pmin=sys.float_info.max
 
             # The frame dataset
             frameDSet=h5_file.create_dataset('frame', (frames,2) ,compression='gzip', compression_opts=4,maxshape=(None,2))
@@ -209,9 +233,8 @@ def field_to_h5(h5_filename, output_file_stem, field, shape, frames, overwrite=F
             xDSet=h5_file.create_dataset('x', (shape[0],),compression='gzip',compression_opts=4)
             yDSet=h5_file.create_dataset('y', (shape[1],),compression='gzip',compression_opts=4)
             zDSet=h5_file.create_dataset('z', (shape[2],),compression='gzip',compression_opts=4)
+            zgDSet=h5_file.create_dataset('zg',(2*shape[2]+1,),compression='gzip',compression_opts=4)
             #xyzDSet=h5_file.create_dataset('xyz', (reduce(lambda a,b: a*b, shape),3),compression='gzip',compression_opts=4)
-            fmax=sys.float_info.min
-            fmin=sys.float_info.max
 
         LOG.debug('Starting with frame %d to frame %d',frame_start,frames-1)
 
@@ -224,7 +247,7 @@ def field_to_h5(h5_filename, output_file_stem, field, shape, frames, overwrite=F
                 if not os.path.exists(file):
                     LOG.warning('Native file "%s" does not exist, though %d frames expected starting at %d' % (file,frames,frame_start))
                 try:
-                    d,step,time,x,y,z=read_native(file,field.scalar)
+                    d,step,time,x,y,z,zg=read_native(file,field.scalar)
                     if field.scalar:
                         LOG.debug("Raw data has the shape: %s",str(d.shape))
                         fmax=max(fmax,d.max())
@@ -233,10 +256,28 @@ def field_to_h5(h5_filename, output_file_stem, field, shape, frames, overwrite=F
                         LOG.debug('(min,max)=(%f,%f)',fmin,fmax)
                     else:
                         vx,vy,vz,p=d
+                        v=np.sqrt(vx**2+vy**2+vz**2)
+
+                        vxmax=max(vxmax,vx.max())
+                        vxmin=min(vxmin,vx.min())
                         vxDSet[frame]=vx
+
+                        vymax=max(vymax,vy.max())
+                        vymin=min(vymin,vy.min())
                         vyDSet[frame]=vy
+
+                        vzmax=max(vzmax,vz.max())
+                        vzmin=min(vzmin,vz.min())
                         vzDSet[frame]=vz
+
+                        vmax=max(vmax,v.max())
+                        vmin=min(vmin,v.min())
+                        vDSet[frame]=v
+
+                        pmax=max(pmax,p.max())
+                        pmin=min(pmin,p.min())
                         pDSet[frame]=p
+
                        
                     # The timestamp info
                     frameDSet[frame,0]=step
@@ -247,9 +288,22 @@ def field_to_h5(h5_filename, output_file_stem, field, shape, frames, overwrite=F
             if field.scalar:
                 dataDSet.attrs['max']=fmax
                 dataDSet.attrs['min']=fmin
+            else:
+                vxDSet.attrs['max']=vxmax
+                vxDSet.attrs['min']=vxmin
+                vyDSet.attrs['max']=vymax
+                vyDSet.attrs['min']=vymin
+                vzDSet.attrs['max']=vzmax
+                vzDSet.attrs['min']=vzmin
+                vDSet.attrs['max']=vmax
+                vDSet.attrs['min']=vmin
+                pDSet.attrs['max']=pmax
+                pDSet.attrs['min']=pmin
+
             xDSet[:]=x[:]
             yDSet[:]=y[:]
             zDSet[:]=z[:]
+            zgDSet[:]=zg[:]
             #xyzDSet[:]=xyz_2_location(x,y,z)
     except:
         LOG.exception("Exception coverting native to h5")
@@ -273,7 +327,7 @@ def file_to_h5(file,field,out=None,overwrite=True):
     if not os.path.exists(h5filename) or overwrite:
         suffix,scalar,fieldname=field
         try:
-            d,step,time,x,y,z=read_native(file,scalar)
+            d,step,time,x,y,z,zg=read_native(file,scalar)
             fmax=d.max()
             fmin=d.min()
             d=d.squeeze()
@@ -430,7 +484,7 @@ def read_native(filename,scalar=None):
                             DATA_3D=(VX_3D,VY_3D,VZ_3D,P_3D)
     finally:
         f.close()
-    return DATA_3D,istep,time,x,y,z
+    return DATA_3D,istep,time,x,y,z,zg
 
 def read_tracers(filename,callback=lambda x: None):
     tracers=None
@@ -707,12 +761,13 @@ class Par(dict):
             if key not in self.comments:
                 self.comments[key]={}
 
-
-    def to_python(self,par_obj_name,io_mod=None,out=sys.stdout,incl_comments=False):
-        if io_mod==None:
-            out.write('%s=Par()\n'%par_obj_name)
+    def to_python(self,par_obj_name,out=sys.stdout,incl_comments=False,incl_import=False):
+        if incl_import:
+            out.write('import stagyy.model\n')
+            out.write('%s=stagyy.model.Par()\n'%par_obj_name)
         else:
-            out.write('%s=%s.Par()\n'%(par_obj_name,io_mod))
+            out.write('%s=Par()\n'%par_obj_name)
+
         for section_name in sorted(self.keys()):
             section=self[section_name]
             comments=self.comments[section_name]

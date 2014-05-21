@@ -110,6 +110,7 @@ class Scene(object):
         self.crust_depth=crust_depth
         self.objects=[]
         self.amp_T=amp_T
+        self.water=False;
 
     def add(self,o):
         if not isinstance(o,SceneObject):
@@ -164,6 +165,22 @@ class SceneObject(object):
 #       else:
 #       return None
 
+class Sphere(SceneObject):
+    """
+    Creates a 2 or 3D sphere of a given temperature
+    """
+    def __init__(self,x,y,z,r,T):
+        self.x=x
+        self.y=y
+        self.z=z
+        self.temp=T
+
+    def T(self,x,y,z,d):
+        """Returns the temperature at x,y,z"""
+        return self.temp if (x-self.x)**2+(y-self.y)**2+(z-self.z)**2 < self.r**2 else None
+
+    def tracer(self,x,y,z,d):
+        return None
 
 class UpperPlate(SceneObject):
     """ 
@@ -201,7 +218,7 @@ class UpperPlate(SceneObject):
 
     def tracer(self,x,y,z,d):
         if d<self.crust_depth and self.in_plate(x,y,d):
-            return tt_solid_basalt
+            return tt_solid_basalt,1.0
         return None
 
 class Plate(SceneObject):
@@ -230,7 +247,7 @@ class Plate(SceneObject):
             self.in_bend = lambda x: x>=trench-bend_horiz_length and x<=trench
             #self.in_bend = lambda x: x>=trench-self.r*np.sin(self.theta) and x<=trench
         self.scene=scene
-        age=abs(ridge-trench)/v
+        self.age=abs(ridge-trench)/v
 
     def set_scene(self,scene):
         self.scene=scene
@@ -276,7 +293,7 @@ class Plate(SceneObject):
             d=self.r-np.sqrt(x**2+y**2)
             if d<0:
                 if surface_d<self.gap_crust_depth:
-                    return tt_solid_basalt
+                    return tt_solid_basalt,1.0
                 else:
                     return None
             phi=np.arctan2(x,y)
@@ -287,7 +304,7 @@ class Plate(SceneObject):
             return None
         
         if d<crust_depth:
-            return tt_solid_basalt
+            return tt_solid_basalt,1.0
         else:
             return None
 
@@ -305,7 +322,7 @@ class GaussianPlume(SceneObject):
         self.scene=scene
     
     def tracer(self,x,y,z,d):
-        return None # always composed of the default tracer type
+        return None
 
     def T(self,x,y,z,d):
         if z<self.thick+self.A: # only calculate if we are below the maximum amplitude
@@ -329,7 +346,7 @@ class Air(SceneObject):
         return self._T if d<=0 else None
 
     def tracer(self,x,y,z,d):
-        return tt_air if d<=0 else None
+        return tt_air,0.0 if d<=0 else None
 
 def calc_temp(scene):
     N=scene.N.copy()
@@ -372,13 +389,13 @@ def calc_temp(scene):
 def calc_tracers(scene,tracers_per_cell):
     N=scene.N
     total=scene.cells*tracers_per_cell
-    tra=np.zeros((total,5))
+    tra=np.zeros((total,5 if not scene.water else 6))
     dx,dy,dz=scene.delta
     x,y,z,b,c=np.mgrid[0:max(1,N[0]-1),0:max(1,N[1]-1),0:max(1,N[2]-1),0:max(1,N[3]),0:tracers_per_cell]
     tra[:,0]=(x.reshape(x.size)+np.random.random(x.size))*dx
     tra[:,1]=(y.reshape(y.size)+np.random.random(y.size))*dy
     tra[:,2]=(z.reshape(z.size)+np.random.random(z.size))*dz
-    tra[:,4]=scene.L[2]-tra[:,2]-scene.air_layer  # depth
+    tra[:,-1]=scene.L[2]-tra[:,2]-scene.air_layer  # depth
 
     # If nx=1, then swap x and y
     if N[0]==1:
@@ -395,16 +412,19 @@ def calc_tracers(scene,tracers_per_cell):
             if tracer!=None:
                 break
         if tracer==None: 
-            tracer=tt_solid_harzburgite if t[4]>scene.crust_depth else tt_solid_basalt
-        assert(tracer in tracer_types)
-        tra[i,3]=tracer
+            tracer=(tt_solid_harzburgite,0.0) if t[4]>scene.crust_depth else (tt_solid_basalt,1.0)
+
+        assert(tracer[0] in tracer_types)
+        tra[i,3]=tracer[0]
+        if scene.water:
+            tra[i,4]=tracer[1]
         pb.progress(i)
         i+=1
     if scene.N[0]==1:
         tmp=tra[:,0].copy()
         tra[:,0]=tra[:,1]
         tra[:,1]=tmp
-    return tra[:,:4]
+    return tra[:,:-1]
 
 def write_temp(out_dir,scene):
     temp=calc_temp(scene)
