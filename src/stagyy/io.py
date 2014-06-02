@@ -8,6 +8,9 @@ import os
 import re
 import sys
 import struct
+import warnings
+
+warnings.warn("The IO module is deprecated, please use the 'model' module")
 
 LOG=logging.getLogger(__name__)
 LOG_RN=logging.getLogger(__name__+'.read_native')
@@ -105,7 +108,6 @@ class Model(object):
 
         # The available fields
         self.fields=sorted(set([ f[len(self.output_file_stem_path)+1:-5] for f in glob.glob(self.output_file_stem_path+'_*[0-9][0-9][0-9][0-9][0-9]') ]))
-
 
 def model_to_h5(model,dest,fields):
     # Calculate the number of timesteps

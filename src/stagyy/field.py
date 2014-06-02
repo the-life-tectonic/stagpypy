@@ -4,8 +4,8 @@ class Field(object):
 		self.scalar=scalar
 		self.name=name
 
-
 AIR=Field('air',True,'air')
+DEWATER=Field('dwtr',True,'dewater')
 AGE=Field('age',True,'age')
 COMPOSITION=Field('c',True,'composition')
 CRUSTAL_THICKNESS=Field('cr',True,'crust')
@@ -18,9 +18,11 @@ TOPOGRAPHY=Field('cs',True,'topography')
 TOPO_SELF_GRAVITY=Field('csg',True,'self-gravity')
 VELOCITY_FIELD=Field('vp',False,'velocity and pressure')
 VISCOSITY=Field('eta',True,'viscosity')
+TRACERS=Field('tra',False,'tracers')
 
 by_prefix={
 AIR.prefix: AIR,
+DEWATER.prefix: DEWATER,
 AGE.prefix: AGE,
 COMPOSITION.prefix: COMPOSITION,
 CRUSTAL_THICKNESS.prefix: CRUSTAL_THICKNESS,
@@ -32,13 +34,15 @@ TEMP.prefix: TEMP,
 TOPOGRAPHY.prefix: TOPOGRAPHY,
 TOPO_SELF_GRAVITY.prefix: TOPO_SELF_GRAVITY,
 VELOCITY_FIELD.prefix: VELOCITY_FIELD,
-VISCOSITY.prefix: VISCOSITY
+VISCOSITY.prefix: VISCOSITY,
+TRACERS.prefix: TRACERS
 }
 
 fields=by_prefix
 
 by_name={
 AIR.name: AIR,
+DEWATER.name: DEWATER,
 AGE.name: AGE,
 COMPOSITION.name: COMPOSITION,
 CRUSTAL_THICKNESS.name: CRUSTAL_THICKNESS,
@@ -50,5 +54,6 @@ TEMP.name: TEMP,
 TOPOGRAPHY.name: TOPOGRAPHY,
 TOPO_SELF_GRAVITY.name: TOPO_SELF_GRAVITY,
 VELOCITY_FIELD.name: VELOCITY_FIELD,
-VISCOSITY.name: VISCOSITY
+VISCOSITY.name: VISCOSITY,
+TRACERS.name: TRACERS
 }

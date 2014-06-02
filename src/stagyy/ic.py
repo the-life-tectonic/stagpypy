@@ -1,4 +1,5 @@
 import numpy as np
+import math
 import h5py
 import logging
 import os
@@ -218,7 +219,7 @@ class UpperPlate(SceneObject):
 
     def tracer(self,x,y,z,d):
         if d<self.crust_depth and self.in_plate(x,y,d):
-            return tt_solid_basalt,1.0
+            return (tt_solid_basalt,1.0)
         return None
 
 class Plate(SceneObject):
@@ -291,9 +292,11 @@ class Plate(SceneObject):
             surface_d=d
             y=self.r-d
             d=self.r-np.sqrt(x**2+y**2)
+            # if the location is above the bend
             if d<0:
+                # if the location is more shallow than the crust
                 if surface_d<self.gap_crust_depth:
-                    return tt_solid_basalt,1.0
+                    return (tt_solid_basalt,1.0)
                 else:
                     return None
             phi=np.arctan2(x,y)
@@ -304,7 +307,7 @@ class Plate(SceneObject):
             return None
         
         if d<crust_depth:
-            return tt_solid_basalt,1.0
+            return (tt_solid_basalt,1.0)
         else:
             return None
 
@@ -346,7 +349,7 @@ class Air(SceneObject):
         return self._T if d<=0 else None
 
     def tracer(self,x,y,z,d):
-        return tt_air,0.0 if d<=0 else None
+        return (tt_air,0.0) if d<=0 else None
 
 def calc_temp(scene):
     N=scene.N.copy()
@@ -408,13 +411,14 @@ def calc_tracers(scene,tracers_per_cell):
     pb=ui.ProgressBar(total=total-1)
     for t in tra[:]:
         for o in scene.objects:
-            tracer=o.tracer(t[0],t[1],t[2],t[4])
+            tracer=o.tracer(t[0],t[1],t[2],t[-1])
             if tracer!=None:
                 break
         if tracer==None: 
-            tracer=(tt_solid_harzburgite,0.0) if t[4]>scene.crust_depth else (tt_solid_basalt,1.0)
-
+            tracer=(tt_solid_harzburgite,0.0) if t[-1]>scene.crust_depth else (tt_solid_basalt,1.0)
         assert(tracer[0] in tracer_types)
+        if math.isnan(tracer[1]):
+            print("(%f,%f,%f) returned a type nan for water content")
         tra[i,3]=tracer[0]
         if scene.water:
             tra[i,4]=tracer[1]
@@ -437,6 +441,8 @@ def write_temp(out_dir,scene):
 def write_tracers(out_dir,scene,tracers_per_cell):
     try:
         tracers=calc_tracers(scene,tracers_per_cell)
+        print("Tracers[3] min/max: %f/%f"%(np.min(tracers[:,3]),np.max(tracers[:,3])))
+        print("Tracers[4] min/max: %f/%f"%(np.min(tracers[:,4]),np.max(tracers[:,4])))
         filename=os.path.join(out_dir,'init.h5')
         h5file=h5py.File(filename)
         #h5file.create_dataset('tracers', data=tracers,compression='gzip')
@@ -445,6 +451,6 @@ def write_tracers(out_dir,scene,tracers_per_cell):
     except NameError as err:
         sys.stderr.write('NameError encountered, perhaps tracer vintage was not set\n')
         sys.stderr.write('Make sure you set tracer vintage using selectTracers(when)\n')
-        traceback.print_tb(err[2])
+        traceback.print_exc()
         sys.exit()
     return filename

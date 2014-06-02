@@ -8,6 +8,7 @@ import os
 import re
 import sys
 import struct
+from evtk.hl import pointsToVTK
 
 LOG=logging.getLogger(__name__)
 LOG_RN=logging.getLogger(__name__+'.read_native')
@@ -134,6 +135,31 @@ def model_to_h5(model,dest,fields, overwrite=False):
         frame_count=field_to_h5( h5_filename, os.path.join(model.dir,model.output_file_stem), field, model.grid_size, model.frames, overwrite)
         result.append({'field': field.name, 'filename': h5_filename, 'frames': frame_count})
     return result
+
+def model_tracers_to_vtu(model,dest, overwrite=False):
+    from field import TRACERS
+    # Calculate the number of timesteps
+    LOG.debug('The model run completed %d timesteps',model.total_timesteps)
+    LOG.debug('There should be %d frames available',model.frames)
+    frames=model.frames
+    result=[]
+    field=TRACERS
+    LOG.debug('Processing field %s',field.name)
+    for frame in range(frames):
+        tracer_filename=os.path.join(model.dir,model.output_file_stem)+'_'+field.prefix+'%05d'%frame
+        vtu_fileout=os.path.join(dest,get_field_filename(model,field,frame))
+        vtu_filename=vtu_fileout+'.vtu'
+        if os.path.exists(vtu_filename):
+            if overwrite:
+                LOG.debug('Overwriting %s',vtu_filename)
+            else:
+                LOG.debug('Skipping existing file %s',vtu_filename)
+                continue
+        tra=read_tracers(tracer_filename)
+        tracers=tra['tracers']
+        data={tra['varnames'][n]:tracers[:,n] for n in range(3,tra['vars'])}
+        LOG.debug("data: %s",data)
+        pointsToVTK(vtu_fileout,tracers[:,0],tracers[:,1],tracers[:,2],data=data)
 
 def get_h5_filename(model,field):
     return get_field_filename(model,field)+'.h5'
@@ -544,6 +570,7 @@ def read_tracers(filename,callback=lambda x: None):
         tracers['blocks']=nb_in
         tracers['aspect_ratio']=asp_in
         tracers['time']=time_in
+        tracers['varnames']=tracer_varname
         tracers['vars']=ntracervar_in
         tracers['count']=ntrg
         tracers['norm']=tracernorm
@@ -577,7 +604,7 @@ def read_float32(f,n=1):
 
 # character read
 def read_string(f,n=1):
-    return ''.join(struct.unpack('s'*16,f.read(16)))
+    return ''.join(struct.unpack('s'*n,f.read(n)))
 
 
 
