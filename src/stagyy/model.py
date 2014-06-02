@@ -155,6 +155,7 @@ def model_tracers_to_vtu(model,dest, overwrite=False):
             else:
                 LOG.debug('Skipping existing file %s',vtu_filename)
                 continue
+        LOG.debug('Processing %s',vtu_filename)
         tra=read_tracers(tracer_filename)
         tracers=tra['tracers']
         data={tra['varnames'][n]:tracers[:,n] for n in range(3,tra['vars'])}
