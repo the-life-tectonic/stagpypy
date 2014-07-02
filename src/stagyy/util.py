@@ -28,8 +28,8 @@ def age_hs(T0,T1,T,d,kappa):
 	"""
 	return (1/kappa)*(d/(2*erfinv( (T-T0)/(T1-T0) )))**2
 
-def Ra(rho,g,alpha,delta_T,length,eta,kappa):
-	return rho*g*alpha*delta_T*length**3/(eta*kappa)
+def Ra(rho,g,T_expansion,delta_T,length,eta,T_diffusivity):
+	return rho*g*T_expansion*delta_T*length**3/(eta*T_diffusivity)
 
 def boundary_layer(ra,ra_ref):
     """Returns the relative boundary layer thickness for a system 
@@ -81,3 +81,8 @@ def combinations(*args):
 			c.append( [i] ) 
 	return c
 		
+def man_exp(v):
+    e=np.log10(v).astype(int)
+    m=v/10.**e
+    return (m,e)
+

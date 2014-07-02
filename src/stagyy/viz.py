@@ -4,7 +4,9 @@ import numpy as np
 import matplotlib.pylab as plt
 from matplotlib.colors import LinearSegmentedColormap
 import h5py
-from . import io
+import png
+#from . import io
+import model
 from . import field
 from .constants import s_in_y
 
@@ -55,7 +57,7 @@ def plot_modeltime(timesteps,prefix,out,title='model time per timestep',ts_max=N
 
 
 def plot_native_frame(directory,prefix,frame,field):
-	d=io.read_native(directory,prefix,frame,field)
+	d=model.read_native(directory,prefix,frame,field)
 	plt.clf()
 	plt.imshow(d[:,0,:].T,origin='bottom')
 	plt.colorbar()
@@ -139,3 +141,52 @@ def plot_2D(file,out=None,opts={}):
 	if plotter:
 		plotter(file,out=out,opts=opts)
 
+def write_frames(frames,filename,renderer,filter=lambda x:x):
+    n=0
+    for d in frames:
+        frame=filter(d.squeeze().T[::-1])
+        fname=filename%n
+        renderer.write(frame,fname)
+        yield fname
+        n+=1
+
+class Renderer(object):
+    def __init__(self,vmin=0.0,vmax=1.0,colormap=plt.get_cmap('jet'),filter=lambda x:x, depth=8):
+        self.set_minmax(vmin,vmax)
+        self.set_depth(depth)
+        self.colormap=colormap
+        self.filter=filter
+
+    def set_depth(self,depth):
+        self._depth=depth
+        self._max_val=2**depth-1
+
+    def get_depth(self):
+        return self._depth;
+
+    def set_minmax(self,vmin,vmax):
+        self.set_normalize(plt.Normalize(min(vmin,vmax),max(vmin,vmax)))
+
+    def get_minmax(self):
+        return (self._norm.vmin,self._norm.vmax)
+
+    def set_normalize(self,norm):
+        self._norm=norm
+
+    def get_normalize(self):
+        return self._norm
+
+    def as_array(self,a):
+        img=(self._max_val*self.colormap(self._norm(self.filter(a)))).astype(int)
+        return img.reshape(img.shape[0],img.shape[1]*img.shape[2])
+
+    def render(self,a):
+        return png.from_array(self.as_array(a),"RGBA;%d"%self._depth)
+
+    def write(self,a,filename):
+        p=self.render(a)
+        p.save(filename)
+
+class Log10Renderer(Renderer):
+    def __init__(self,vmin=0.0,vmax=1.0,colormap=plt.get_cmap('jet'), depth=8):
+        super(Log10Renderer, self).__init__(vmin=vmin,vmax=vmax,colormap=colormap,filter=np.log10,depth=depth)
