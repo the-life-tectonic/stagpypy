@@ -441,8 +441,6 @@ def write_temp(out_dir,scene):
 def write_tracers(out_dir,scene,tracers_per_cell):
     try:
         tracers=calc_tracers(scene,tracers_per_cell)
-        print("Tracers[3] min/max: %f/%f"%(np.min(tracers[:,3]),np.max(tracers[:,3])))
-        print("Tracers[4] min/max: %f/%f"%(np.min(tracers[:,4]),np.max(tracers[:,4])))
         filename=os.path.join(out_dir,'init.h5')
         h5file=h5py.File(filename)
         #h5file.create_dataset('tracers', data=tracers,compression='gzip')
