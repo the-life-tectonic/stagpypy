@@ -5,7 +5,6 @@ import matplotlib.pylab as plt
 from matplotlib.colors import LinearSegmentedColormap
 import h5py
 import png
-#from . import io
 import model
 from . import field
 from .constants import s_in_y
@@ -38,6 +37,17 @@ def litho_colormap(min,max,boundary=1600.0,width=20):
 					   (                  1.0, 0.0 , 0.0))}
 
 	return LinearSegmentedColormap('litho', cdict)
+
+def alpha_colormap(red,green,blue,name,alpha_min=0.0,alpha_max=1.0):
+    cdict = {'red':    ((0.0,red,red),
+                        (1.0,red,red)),
+             'green':  ((0.0,green,green),
+                        (1.0,green,green)),
+             'blue':   ((0.0,blue,blue),
+                        (1.0,blue,blue)),
+             'alpha':  ((0.0,alpha_min,alpha_min),
+                        (1.0,alpha_max,alpha_max))}
+    return LinearSegmentedColormap(name, cdict)
 
 def plot_modeltime(timesteps,prefix,out,title='model time per timestep',ts_max=None,overwrite=False,unit=s_in_y):
 	plot_out=os.path.join(out,prefix+'_modeltime.png')
@@ -141,21 +151,25 @@ def plot_2D(file,out=None,opts={}):
 	if plotter:
 		plotter(file,out=out,opts=opts)
 
-def write_frames(frames,filename,renderer,filter=lambda x:x):
+def write_frames(frames,filename,renderer,overwrite=True):
     n=0
     for d in frames:
-        frame=filter(d.squeeze().T[::-1])
         fname=filename%n
-        renderer.write(frame,fname)
+        if overwrite or not os.path.exists(fname):
+            out=open(fname,'wb')
+            frame=d.squeeze().T[::-1]
+            renderer.write(frame,fname)
+            out.close()
         yield fname
         n+=1
 
 class Renderer(object):
-    def __init__(self,vmin=0.0,vmax=1.0,colormap=plt.get_cmap('jet'),filter=lambda x:x, depth=8):
+    def __init__(self,vmin=0.0,vmax=1.0,colormap=plt.get_cmap('jet'),filter=lambda x:x, depth=8,compression=None):
+        self.filter=filter
         self.set_minmax(vmin,vmax)
         self.set_depth(depth)
         self.colormap=colormap
-        self.filter=filter
+        self.compression=compression
 
     def set_depth(self,depth):
         self._depth=depth
@@ -165,10 +179,12 @@ class Renderer(object):
         return self._depth;
 
     def set_minmax(self,vmin,vmax):
-        self.set_normalize(plt.Normalize(min(vmin,vmax),max(vmin,vmax)))
+        self.vmin=min(vmin,vmax)
+        self.vmax=max(vmin,vmax)
+        self.set_normalize(plt.Normalize(self.filter(vmin),self.filter(vmax)))
 
     def get_minmax(self):
-        return (self._norm.vmin,self._norm.vmax)
+        return (self.vmin,self.vmax)
 
     def set_normalize(self,norm):
         self._norm=norm
@@ -183,10 +199,30 @@ class Renderer(object):
     def render(self,a):
         return png.from_array(self.as_array(a),"RGBA;%d"%self._depth)
 
-    def write(self,a,filename):
-        p=self.render(a)
+    def write(self,a,out,compression=None):
+        comp = self.compression if compression==None else compression
+        writer=png.Writer(size=a.shape[::-1],alpha=True,bitdepth=self._depth,compression=comp)
+        writer.write(out,self.as_array(a))
+
+    def colorbar(self,colors=None,width=20):
+        vmin=self.vmin
+        vmax=self.vmax
+        ncolors=2**self._depth if colors==None else colors
+        a=np.vstack([np.linspace(vmax,vmin,ncolors)]*width).T
+        return self.render(a);
+        
+    def write_colorbar(self,filename,colors=None,width=20):
+        p=self.colorbar(colors,width)
         p.save(filename)
 
 class Log10Renderer(Renderer):
-    def __init__(self,vmin=0.0,vmax=1.0,colormap=plt.get_cmap('jet'), depth=8):
-        super(Log10Renderer, self).__init__(vmin=vmin,vmax=vmax,colormap=colormap,filter=np.log10,depth=depth)
+    def __init__(self,vmin=0.0,vmax=1.0,colormap=plt.get_cmap('jet'), depth=8,compression=None):
+        super(Log10Renderer, self).__init__(vmin=vmin,vmax=vmax,colormap=colormap,filter=np.log10,depth=depth,compression=compression)
+
+    def colorbar(self,colors=None,width=20):
+        print("log10 colorbar");
+        vmin=np.log10(self.vmin)
+        vmax=np.log10(self.vmax)
+        ncolors=2**self._depth if colors==None else colors
+        a=10**np.vstack([np.linspace(vmax,vmin,ncolors)]*width).T
+        return self.render(a);
