@@ -91,12 +91,13 @@ class Scene(object):
     T_mantle=1600.0 : Background mantle temperature (K)
     Amp_T           : Amplitude of randomness to add to the Temp field (K)
     """
-    def __init__(self,L,N,alpha=3e-5,g=9.81,eta0=1e21,rho=3300.0,Cp=1200.0,k=3.0,kappa=1e-6,
+    def __init__(self,grid,alpha=3e-5,g=9.81,eta0=1e21,rho=3300.0,Cp=1200.0,k=3.0,kappa=1e-6,
                  T_surface=300.0, T_mantle=1600.0, eta_air=1e18, air_layer=0.0,crust_depth=0.0,amp_T=0):
+v
         self.L=np.array(L)
         self.N=np.array(N)
         self.cells=reduce(lambda x,y: max(1,x)*max(1,y), self.N-1)
-        self.delta=np.array([ 0 if n==0 else l/n for l,n in zip(self.L,self.N-1)  ])
+#        self.delta=np.array([ 0 if n==0 else l/n for l,n in zip(self.L,self.N-1)  ])
         self.alpha=alpha
         self.g=g
         self.eta0=eta0
@@ -358,11 +359,12 @@ def calc_temp(scene):
         LOG.debug('Processing Y,Z data')
         N[0]=scene.N[1]
         N[1]=scene.N[0]
-        dy,dx,dz=scene.delta
+#        dy,dx,dz=scene.delta
     else:
         LOG.debug('Processing X,Z or X,Y,Z data')
-        dx,dy,dz=scene.delta
+#        dx,dy,dz=scene.delta
 
+    # Set the background viscosity
     temp=np.ones(N)*scene.T_mantle+(np.random.rand(*N)*scene.amp_T-scene.amp_T/2)
     # The progress bar
     total=N[0]*N[1]*N[2]*N[3]
@@ -389,16 +391,20 @@ def calc_temp(scene):
         temp=np.swapaxes(temp,0,1)
     return temp
 
-def calc_tracers(scene,tracers_per_cell):
+def calc_tracers(scene,tracers):
     N=scene.N
-    total=scene.cells*tracers_per_cell
-    tra=np.zeros((total,5 if not scene.water else 6))
-    dx,dy,dz=scene.delta
-    x,y,z,b,c=np.mgrid[0:max(1,N[0]-1),0:max(1,N[1]-1),0:max(1,N[2]-1),0:max(1,N[3]),0:tracers_per_cell]
-    tra[:,0]=(x.reshape(x.size)+np.random.random(x.size))*dx
-    tra[:,1]=(y.reshape(y.size)+np.random.random(y.size))*dy
-    tra[:,2]=(z.reshape(z.size)+np.random.random(z.size))*dz
-    tra[:,-1]=scene.L[2]-tra[:,2]-scene.air_layer  # depth
+    L=scene.L
+    tra=np.zeros((tracers,5 if not scene.water else 6))
+    # Randomly select x,y,z locations
+    tra[:,:3]=np.random.random((tracers,3))
+    # depth is 1-z
+    tra[:,-1]=1-tra[:,2]
+    # dimensionalize
+    tra[:,0]*=L[0]
+    tra[:,1]*=L[1]
+    tra[:,2]*=L[2]
+    tra[:,-1]*=L[2]
+    tra[:,-1]-=scene.air_layer
 
     # If nx=1, then swap x and y
     if N[0]==1:
@@ -408,7 +414,7 @@ def calc_tracers(scene,tracers_per_cell):
 
     # The progress bar
     i=0
-    pb=ui.ProgressBar(total=total-1)
+    pb=ui.ProgressBar(total=tracers-1)
     for t in tra[:]:
         for o in scene.objects:
             tracer=o.tracer(t[0],t[1],t[2],t[-1])
@@ -417,13 +423,12 @@ def calc_tracers(scene,tracers_per_cell):
         if tracer==None: 
             tracer=(tt_solid_harzburgite,0.0) if t[-1]>scene.crust_depth else (tt_solid_basalt,1.0)
         assert(tracer[0] in tracer_types)
-        if math.isnan(tracer[1]):
-            print("(%f,%f,%f) returned a type nan for water content")
         tra[i,3]=tracer[0]
         if scene.water:
             tra[i,4]=tracer[1]
         pb.progress(i)
         i+=1
+    # Swap them back    
     if scene.N[0]==1:
         tmp=tra[:,0].copy()
         tra[:,0]=tra[:,1]
@@ -438,9 +443,11 @@ def write_temp(out_dir,scene):
     h5file.close()
     return filename
 
-def write_tracers(out_dir,scene,tracers_per_cell):
+def write_tracers(out_dir,scene,tracers,tracers_per_cell=True):
     try:
-        tracers=calc_tracers(scene,tracers_per_cell)
+        if tracers_per_cell:
+            tracers=tacers*scene.cells
+        tracers=calc_tracers(scene,tracers)
         filename=os.path.join(out_dir,'init.h5')
         h5file=h5py.File(filename)
         #h5file.create_dataset('tracers', data=tracers,compression='gzip')
