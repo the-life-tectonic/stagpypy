@@ -277,7 +277,7 @@ _jms=dict()
 #
 #  Local system
 #
-LOCAL=System('Local Serial', [Queue('serial',2,1e6),Queue('mpi',2,1e6)], BASH)
+LOCAL=System('Local Serial', [Queue('normal',2,1e6),Queue('mpi',2,1e6)], BASH)
 def local_mpi_exec(cpus,mpi_command):
     cmd=''
     if cpus==1:
