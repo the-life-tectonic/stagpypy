@@ -1,5 +1,4 @@
 import numpy as np
-import math
 import h5py
 import logging
 import os
@@ -7,9 +6,16 @@ import sys
 import traceback
 from . import ui
 from .util import T_hs
-from .constants import s_in_y
 
 LOG=logging.getLogger(__name__)
+
+def log():
+    handler=logging.StreamHandler()
+    handler.setLevel(logging.DEBUG)
+    LOG.addHandler(handler)
+    LOG.setLevel(logging.DEBUG)
+    
+
 
 #
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -93,11 +99,10 @@ class Scene(object):
     """
     def __init__(self,grid,alpha=3e-5,g=9.81,eta0=1e21,rho=3300.0,Cp=1200.0,k=3.0,kappa=1e-6,
                  T_surface=300.0, T_mantle=1600.0, eta_air=1e18, air_layer=0.0,crust_depth=0.0,amp_T=0):
-v
-        self.L=np.array(L)
-        self.N=np.array(N)
+        self.L=grid.L
+        self.N=grid.N
+        self.grid=grid
         self.cells=reduce(lambda x,y: max(1,x)*max(1,y), self.N-1)
-#        self.delta=np.array([ 0 if n==0 else l/n for l,n in zip(self.L,self.N-1)  ])
         self.alpha=alpha
         self.g=g
         self.eta0=eta0
@@ -370,18 +375,16 @@ def calc_temp(scene):
     total=N[0]*N[1]*N[2]*N[3]
     i=0
     pb=ui.ProgressBar(total=total-1)
-    for ib in xrange(N[3]):
-        for iz in xrange(N[2]):
-            for iy in xrange(N[1]):
-                for ix in xrange(N[0]):
+    for ib in scene.grid.b:
+        for iz,z in enumerate(scene.grid.z_center):
+            for iy,y in enumerate(scene.grid.y_center):
+                for ix,x in enumerate(scene.grid.x_center):
                     pb.progress(i)
                     i=i+1
-                    x=ix*dx
-                    y=iy*dy
-                    z=iz*dz
-                    depth=scene.L[2]-z-scene.air_layer
+                    depth=scene.grid.L[2]-z-scene.air_layer
                     T=None
                     LOG.debug('T(%0.2f,%0.2f,%0.2f,%0.2f)'%(x,y,z,depth))
+                    LOG.debug('T(%3d,%3d,%3d,%3d)'%(ix,iy,iz,ib))
                     for o in scene.objects:
                         T=o.T(x,y,z,depth)
                         if T!=None:

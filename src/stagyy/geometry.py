@@ -13,7 +13,7 @@ def expint(x):
 #end function expint
     return np.exp(x)*(x<0)+ (2.0-np.exp(-x))*(x>=0)
 
-def g_of_z_exp(z,layers=[],dresl_topbot=1.0)
+def g_of_z_exp(z,layers=[],dresl_topbot=1.0):
     """
     Each layer is a tuple:
     (normalized depth, dresl, wresl)
@@ -90,27 +90,28 @@ class Grid(object):
     def __init__(self,N,L):
         self.L=np.array(L)
         self.N=np.array(N)
+        # Calculate in the 'b' (ying/yang) direction
+        self.b=np.linspace(0,1,N[3])
+        # Calculate in the X direction
+        self.xg=np.linspace(0,L[0],N[0]*2+1)
+        self.x_center=self.xg[1::2]
+        self.x_face=self.xg[::2]
+        # Calculate in the Y direction
+        self.yg=np.linspace(0,L[1],N[1]*2+1)
+        self.y_center=self.yg[1::2]
+        self.y_face=self.yg[::2]
         self.cells=reduce(lambda x,y: max(1,x)*max(1,y), self.N-1)
 
 class RegularGrid(Grid):
     def __init__(self,N,L):
         super(Grid, self).__init__(N,L)
         self.delta=np.array([ 0 if n==0 else l/n for l,n in zip(self.L,self.N-1)  ])
-        # Calculate in the X direction
-        self.xg=np.linspace(0,L[0],N[0]*2+1)
-        self.x_center=self.xg[1::2]
-        self.x_face=self.xg[::2]
-        # Calculate in the Y direction
-        self.yg=np.linspace(0,L[1],N[0]*2+1)
-        self.y_center=self.yg[1::2]
-        self.y_face=self.yg[::2]
         # Calculate in the Z direction
-        self.zg=np.linspace(0,L[1],N[0]*2+1)
+        self.zg=np.linspace(0,L[1],N[2]*2+1)
         self.z_center=self.zg[1::2]
         self.z_face=self.zg[::2]
 
-class ExpGrid(object):
-    def __init__(self,N,L,layers=[],dresl_topbot=1.0):
+class ExpGrid(Grid):
     """
     Each layer is a tuple:
     (normalized depth, dresl, wresl)
@@ -118,15 +119,8 @@ class ExpGrid(object):
     dresl is the approzimate refinement
     wresl is the width
     """
-        super(Grid, self).__init__(N,L)
-        # Calculate in the X direction
-        self.xg=np.linspace(0,L[0],N[0]*2+1)
-        self.x_center=self.xg[1::2]
-        self.x_face=self.xg[::2]
-        # Calculate in the Y direction
-        self.yg=np.linspace(0,L[1],N[0]*2+1)
-        self.y_center=self.yg[1::2]
-        self.y_face=self.yg[::2]
+    def __init__(self,N,L,layers=[],dresl_topbot=1.0):
+        super(ExpGrid, self).__init__(N,L)
         # Calculate in the Z
         g_of_z=lambda z: g_of_z_exp(z,layers,dresl_topbot)
         iz2=np.arange(0.,N[2]*2+1)
