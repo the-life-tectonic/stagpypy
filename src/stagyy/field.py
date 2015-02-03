@@ -13,6 +13,7 @@ DENSITY=Field('rho',True,'density')
 GEOID=Field('g',True,'geoid')
 MELT_FRACTION=Field('f',True,'melt fraction')
 STRAIN_RATE=Field('ed',True,'strain rate')
+STRESS=Field('str',True,'stress')
 TEMP=Field('t',True,'temp')
 TOPOGRAPHY=Field('cs',True,'topography')
 TOPO_SELF_GRAVITY=Field('csg',True,'self-gravity')
@@ -30,6 +31,7 @@ DENSITY.prefix: DENSITY,
 GEOID.prefix: GEOID,
 MELT_FRACTION.prefix: MELT_FRACTION,
 STRAIN_RATE.prefix: STRAIN_RATE,
+STRESS.prefix: STRESS,
 TEMP.prefix: TEMP,
 TOPOGRAPHY.prefix: TOPOGRAPHY,
 TOPO_SELF_GRAVITY.prefix: TOPO_SELF_GRAVITY,
@@ -50,6 +52,7 @@ DENSITY.name: DENSITY,
 GEOID.name: GEOID,
 MELT_FRACTION.name: MELT_FRACTION,
 STRAIN_RATE.name: STRAIN_RATE,
+STRESS.name: STRESS,
 TEMP.name: TEMP,
 TOPOGRAPHY.name: TOPOGRAPHY,
 TOPO_SELF_GRAVITY.name: TOPO_SELF_GRAVITY,
