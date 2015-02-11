@@ -8,6 +8,7 @@ import os
 import re
 import sys
 import struct
+import geometry
 from evtk.hl import pointsToVTK
 
 LOG=logging.getLogger(__name__)
@@ -46,10 +47,10 @@ class Suite(object):
             except:
                 LOG.error('Unable to process model "%s"',model_dir,exc_info=True)
         self.models=[self.model_map[model_name] for model_name in sorted(self.model_map.keys())]
-        self.max_last_timestep=max([m.last_timestep for m in self.models])
-        self.min_last_timestep=min([m.last_timestep for m in self.models])
+        self.max_last_timestep=max([mdl.last_timestep for mdl in self.models])
+        self.min_last_timestep=min([mdl.last_timestep for mdl in self.models])
         self.fields=sorted(self.fields)
-        self.par_diff=par_diff([ m.par for m in self.models ])
+        self.par_diff=par_diff([ mdl.par for mdl in self.models ])
         
 class Model(object):
     def __init__(self,model_dir):
@@ -123,6 +124,19 @@ def suite_to_h5(suite,dest,fields):
 			os.makedirs(data_dir)
 		model_to_h5(model,data_dir,fields)
 
+def interpolate_model_xz(model,dest,fields):
+    constant_spacing=model.par['geometry']['zspacing_mode']=="constant" or all([v==1 for k,v in model.par['geometry'].items() if k.startswith('dresl')])
+    LOG.debug("Spacing is %s"%("constant" if constant_spacing else "refined"))
+    if constant_spacing:
+        for field in fields:
+            LOG.debug('Interpolating field %s',field.name)
+            h5_filename=os.path.join(dest,get_h5_filename(model,field))
+            h5_file=h5py.File(h5_filename,'a')
+            LOG.debug('H5 itmes: %s',str(h5_file.items()))
+            Lz=model.par['geometry']['D_dimensional']
+            Lx=Lz*model.par['geometry']['aspect_ratio(1)']
+            geometry.interpolate_h5_xz(h5_file,Lx,Lz)
+
 
 def model_to_h5(model,dest,fields, overwrite=False):
     # Calculate the number of timesteps
@@ -142,7 +156,7 @@ def model_tracers_to_vtu(model,dest, overwrite=False):
     LOG.debug('The model run completed %d timesteps',model.total_timesteps)
     LOG.debug('There should be %d frames available',model.frames)
     frames=model.frames
-    result=[]
+    #result=[]
     field=TRACERS
     LOG.debug('Processing field %s',field.name)
     for frame in range(frames):
