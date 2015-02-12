@@ -1,8 +1,14 @@
 class Field(object):
-	def __init__(self,prefix,scalar,name):
-		self.prefix=prefix
-		self.scalar=scalar
-		self.name=name
+    def __init__(self,prefix,scalar,name):
+        self.prefix=prefix
+        self.scalar=scalar
+        self.name=name
+
+    def __str__(self):
+        return "Field(%s)"%self.name
+
+    def __repr__(self):
+        return self.__str__()
 
 AIR=Field('air',True,'air')
 DEWATER=Field('dwtr',True,'dewater')
