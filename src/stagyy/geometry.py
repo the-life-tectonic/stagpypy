@@ -91,7 +91,12 @@ For a function, y=f(x) and values y, find x such that  f(x)-y<errval
     return x
 
 def interpolate_h5_xz(h5,Lx,Lz):
-    frames,nx,ny,nz=h5['data'].shape
+    if 'data' in h5:
+        frames,nx,ny,nz=h5['data'].shape
+    elif 'p' in h5:
+        frames,nx,ny,nz=h5['p'].shape
+    else:
+        raise ValueError("H5 file has neither data nor pressure")
     x=h5['x']
     z=h5['z']
     px=nx
@@ -127,7 +132,6 @@ def interpolate_h5_xz(h5,Lx,Lz):
             img_set.resize((data_frames-img_frames,px,pz))
             for n in xrange(img_frames,data_frames):
                 data=np.squeeze(data_set[n])
-                LOG.debug("Data is shape %s",str(data.shape))
                 #f=interpolate.interp2d(z,x,data)
                 f=interpolate.RectBivariateSpline(x,z,data)
                 img_set[n]=f(x_new,z_new)
