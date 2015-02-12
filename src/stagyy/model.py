@@ -127,11 +127,12 @@ def suite_to_h5(suite,dest,fields):
 def interpolate_model_xz(model,dest,fields):
     constant_spacing=model.par['geometry']['zspacing_mode']=="constant" or all([v==1 for k,v in model.par['geometry'].items() if k.startswith('dresl')])
     LOG.debug("Spacing is %s"%("constant" if constant_spacing else "refined"))
-    if constant_spacing:
+    if not constant_spacing:
         for field in fields:
             LOG.debug('Interpolating field %s',field.name)
             h5_filename=os.path.join(dest,get_h5_filename(model,field))
             h5_file=h5py.File(h5_filename,'a')
+            LOG.debug('H5 file: %s',h5_filename)
             LOG.debug('H5 itmes: %s',str(h5_file.items()))
             Lz=model.par['geometry']['D_dimensional']
             Lx=Lz*model.par['geometry']['aspect_ratio(1)']
@@ -189,6 +190,7 @@ def get_field_pattern(model,field):
     return model.output_file_prefix+'_'+field.prefix+'%05d'
 
 def field_to_h5(h5_filename, output_file_stem, field, shape, frames, overwrite=False):
+    frame_pattern=output_file_stem+'_'+field.prefix+'%05d'
     # Check if the 
     if os.path.exists(h5_filename) and overwrite:
         LOG.debug('Removing file %s to overwrite',h5_filename)
@@ -279,14 +281,14 @@ def field_to_h5(h5_filename, output_file_stem, field, shape, frames, overwrite=F
 
         LOG.debug('Starting with frame %d to frame %d',frame_start,frames-1)
 
-        frame_pattern=output_file_stem+'_'+field.prefix+'%05d'
 
         if frame_start<frames:
             for frame in range(frame_start,frames):
                 file=frame_pattern%frame
                 LOG.debug('Reading native file %s',file)
                 if not os.path.exists(file):
-                    LOG.warning('Native file "%s" does not exist, though %d frames expected starting at %d' % (file,frames,frame_start))
+                    LOG.warning('Native file "%s" does not exist, though %d frames expected starting at %d, skipping' % (file,frames,frame_start,field.prefix))
+                    break;
                 try:
                     d,step,time,x,y,z,zg=read_native(file,field.scalar)
                     if field.scalar:

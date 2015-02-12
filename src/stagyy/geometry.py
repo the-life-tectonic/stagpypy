@@ -1,6 +1,9 @@
+import logging 
 import numpy as np
 from scipy.optimize import newton
 from scipy import interpolate
+
+LOG=logging.getLogger(__name__)
 
 def expint(x):
 #real function expint (x)
@@ -118,12 +121,16 @@ def interpolate_h5_xz(h5,Lx,Lz):
             img_set=img[dset_name]
             data_frames=data_set.shape[0]
             img_frames=img_set.shape[0]
+            LOG.debug("Interoplating %s from %d to %d",dset_name,img_frames,data_frames)
             img_set.attrs['min']=data_set.attrs['min']
             img_set.attrs['max']=data_set.attrs['max']
             img_set.resize((data_frames-img_frames,px,pz))
             for n in xrange(img_frames,data_frames):
-                f=interpolate.interp2d(z,x,np.squeeze(data_set[n]))
-                img_set[n]=f(z_new,x_new)
+                data=np.squeeze(data_set[n])
+                LOG.debug("Data is shape %s",str(data.shape))
+                #f=interpolate.interp2d(z,x,data)
+                f=interpolate.RectBivariateSpline(x,z,data)
+                img_set[n]=f(x_new,z_new)
 
 class Grid(object):
     def __init__(self,N,L):
