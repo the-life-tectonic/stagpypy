@@ -13,7 +13,6 @@ def most_recent_mod(directory):
 		for filename in filenames:
 			fname=os.path.join(dirpath,filename)
 			stats=os.stat(fname)
-			mtime=stats[stat.ST_MTIME]
 			mod=max(mod,stats[stat.ST_MTIME])
 	return mod
 
@@ -28,6 +27,7 @@ setup(
 	author='Robert I. Petersen',
 	author_email='rpetersen@ucsd.edu', 
 	version=ver,
+	scripts=['src/scripts/pardiff.py'],
 	package_dir={'stagyy': src},
 	packages=['stagyy'], 
 	license='GPL 2.0', 
