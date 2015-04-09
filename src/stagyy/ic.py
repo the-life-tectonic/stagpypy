@@ -88,7 +88,7 @@ class Scene(object):
     are for a modern Earth:
     alpha=3e-5      : thermal expansion coefficient (K^-1) [expan_dimensional in par]
     g=9.81          : gravity (m s^-2)  [g_dimensional in par]
-    eta0=1e19        : dynamic viscosity (Pa s) [eta0 in par]
+    eta0=1e21        : dynamic viscosity (Pa s) [eta0 in par]
     rho=3300.0      : densiry (kg m^-3) [dens_dimensional in par]
     Cp=1200.0       : spefific heat (J kg^-1 K^-1) [Cp_dimensional in par]
     k=3.0           : thermal conductivity (W m^-1 K^-1) [tcond_dimensional]
@@ -449,14 +449,14 @@ def write_temp(out_dir,scene):
 def write_tracers(out_dir,scene,tracers,tracers_per_cell=True):
     try:
         if tracers_per_cell:
-            tracers=tacers*scene.cells
+            tracers=tracers*scene.cells
         tracers=calc_tracers(scene,tracers)
         filename=os.path.join(out_dir,'init.h5')
         h5file=h5py.File(filename)
         #h5file.create_dataset('tracers', data=tracers,compression='gzip')
         h5file.create_dataset('tracers', data=tracers,compression='gzip')
         h5file.close()
-    except NameError as err:
+    except NameError:
         sys.stderr.write('NameError encountered, perhaps tracer vintage was not set\n')
         sys.stderr.write('Make sure you set tracer vintage using selectTracers(when)\n')
         traceback.print_exc()
