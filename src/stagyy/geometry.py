@@ -1,7 +1,8 @@
 import logging 
 import numpy as np
 from scipy.optimize import newton
-from scipy import interpolate
+#from scipy import interpolate
+from mpl_toolkits.basemap import interp
 
 LOG=logging.getLogger(__name__)
 
@@ -97,14 +98,15 @@ def interpolate_h5_xz(h5,Lx,Lz):
         frames,nx,ny,nz=h5['p'].shape
     else:
         raise ValueError("H5 file has neither data nor pressure")
-    x=h5['x']
-    z=h5['z']
+    x=h5['x'].value
+    z=h5['z'].value
     px=nx
     pz=int(nx*Lz/Lx)
     dx=Lx/px
     dz=Lz/pz
     x_new=(np.arange(px)+.5)*dx
     z_new=(np.arange(pz)+.5)*dz
+    Z_new,X_new=np.meshgrid(z_new,x_new)
 
     #  Create the image group if it doesn't exist
     if not 'image' in h5:
@@ -132,9 +134,11 @@ def interpolate_h5_xz(h5,Lx,Lz):
             img_set.resize((data_frames-img_frames,px,pz))
             for n in xrange(img_frames,data_frames):
                 data=np.squeeze(data_set[n])
+                img_set[n]=interp(data,z,x,Z_new,X_new)
                 #f=interpolate.interp2d(z,x,data)
-                f=interpolate.RectBivariateSpline(x,z,data)
-                img_set[n]=f(x_new,z_new)
+                #img_set[n]=f(z_new,x_new)
+                #f=interpolate.RectBivariateSpline(x,z,data)
+                #img_set[n]=f(x_new,z_new)
 
 class Grid(object):
     def __init__(self,N,L):
