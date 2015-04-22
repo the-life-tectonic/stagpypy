@@ -134,6 +134,8 @@ def interpolate_model_xz(model,dest,fields):
             h5_file=h5py.File(h5_filename,'a')
             LOG.debug('H5 file: %s',h5_filename)
             LOG.debug('H5 itmes: %s',str(h5_file.items()))
+            if 'image' in h5_file:
+                LOG.debug('H5 itmes: %s',str(h5_file['image'].items()))
             Lz=model.par['geometry']['D_dimensional']
             Lx=Lz*model.par['geometry']['aspect_ratio(1)']
             geometry.interpolate_h5_xz(h5_file,Lx,Lz)
@@ -287,7 +289,7 @@ def field_to_h5(h5_filename, output_file_stem, field, shape, frames, overwrite=F
                 file=frame_pattern%frame
                 LOG.debug('Reading native file %s',file)
                 if not os.path.exists(file):
-                    LOG.warning('Native file "%s" does not exist, though %d frames expected starting at %d, skipping' % (file,frames,frame_start,field.prefix))
+                    LOG.warning('Native file "%s" does not exist, though %d frames expected starting at %d, skipping' % (file,frames,frame_start))
                     break;
                 try:
                     d,step,time,x,y,z,zg=read_native(file,field.scalar)
@@ -352,6 +354,7 @@ def field_to_h5(h5_filename, output_file_stem, field, shape, frames, overwrite=F
         LOG.exception("Exception coverting native to h5")
     finally: 
         h5_file.close()
+        LOG.debug('%s closed',h5_filename)
     return h5_filename,frames-frame_start
 
 def get_filename(prefix,field,frame):
