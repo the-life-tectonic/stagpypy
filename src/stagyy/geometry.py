@@ -131,7 +131,8 @@ def interpolate_h5_xz(h5,Lx,Lz):
             LOG.debug("Interoplating %s from %d to %d",dset_name,img_frames,data_frames)
             img_set.attrs['min']=data_set.attrs['min']
             img_set.attrs['max']=data_set.attrs['max']
-            img_set.resize((data_frames-img_frames,px,pz))
+            LOG.debug("Resizing image[%s] to %s frames",dset_name,str( (data_frames,px,pz) ))
+            img_set.resize((data_frames,px,pz))
             for n in xrange(img_frames,data_frames):
                 data=np.squeeze(data_set[n])
                 img_set[n]=interp(data,z,x,Z_new,X_new)
