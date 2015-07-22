@@ -112,6 +112,12 @@ class Model(object):
 
         # The available fields
         self.fields=sorted(set([ f[len(self.output_file_stem_path)+1:-5] for f in glob.glob(self.output_file_stem_path+'_*[0-9][0-9][0-9][0-9][0-9]') ]))
+    
+    def __str__(self):
+        return "Model(%s)"%self.dir
+
+    def __repr__(self):
+        return self.__str__()
 
 def suite_to_h5(suite,dest,fields):
 	if not os.path.exists(dest):
@@ -138,7 +144,14 @@ def interpolate_model_xz(model,dest,fields):
                 LOG.debug('H5 itmes: %s',str(h5_file['image'].items()))
             Lz=model.par['geometry']['D_dimensional']
             Lx=Lz*model.par['geometry']['aspect_ratio(1)']
-            geometry.interpolate_h5_xz(h5_file,Lx,Lz)
+            LOG.debug('Dimensional shape %dx%d',Lx,Lz)
+            dL=np.diff(h5_file['z']).min()
+            LOG.debug('Dimensional cell size %f',dL)
+            Pz=np.floor(Lz/dL)
+            Px=np.floor(Lx/dL)
+            LOG.debug('Interpolated grid size size %dx%d',Px,Pz)
+            geometry.interpolate_h5_xz(h5_file,Lx,Lz,Px,Pz)
+            h5_file.close()
 
 
 def model_to_h5(model,dest,fields, overwrite=False):

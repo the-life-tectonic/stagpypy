@@ -1,8 +1,7 @@
 import logging 
+import time
 import numpy as np
 from scipy.optimize import newton
-#from scipy import interpolate
-from mpl_toolkits.basemap import interp
 
 LOG=logging.getLogger(__name__)
 
@@ -91,17 +90,28 @@ For a function, y=f(x) and values y, find x such that  f(x)-y<errval
         fx=f(x)
     return x
 
-def interpolate_h5_xz(h5,Lx,Lz):
+def interpolate_h5_xz(h5,Lx,Lz,px=None,pz=None):
+    from scipy import interpolate
+    #from mpl_toolkits.basemap import interp
     if 'data' in h5:
         frames,nx,ny,nz=h5['data'].shape
     elif 'p' in h5:
         frames,nx,ny,nz=h5['p'].shape
     else:
         raise ValueError("H5 file has neither data nor pressure")
+    LOG.debug("Grid size (nx,ny,nz): (%d,%d,%d)",nx,ny,nz)
+    LOG.debug("Frames: %d",frames)
     x=h5['x'].value
     z=h5['z'].value
-    px=nx
-    pz=int(nx*Lz/Lx)
+    LOG.debug("Size (x,z): (%d,%d)",len(x),len(z))
+    if not px:
+        px=nx
+    if not pz:
+        pz=int(nx*Lz/Lx)
+    LOG.debug("Pixel Size (px,pz): (%f,%f)",px,pz)
+    px=int(px)
+    pz=int(pz)
+    LOG.debug('Interpolated grid size size %dx%d',px,pz)
     dx=Lx/px
     dz=Lz/pz
     x_new=(np.arange(px)+.5)*dx
@@ -133,13 +143,24 @@ def interpolate_h5_xz(h5,Lx,Lz):
             img_set.attrs['max']=data_set.attrs['max']
             LOG.debug("Resizing image[%s] to %s frames",dset_name,str( (data_frames,px,pz) ))
             img_set.resize((data_frames,px,pz))
+            start_time=time.time()
             for n in xrange(img_frames,data_frames):
                 data=np.squeeze(data_set[n])
-                img_set[n]=interp(data,z,x,Z_new,X_new)
-                #f=interpolate.interp2d(z,x,data)
-                #img_set[n]=f(z_new,x_new)
+                #Interpolate using basemap
+                #img_set[n]=interp(data,z,x,Z_new,X_new)
+
+                f=interpolate.interp2d(z,x,data)
+                img_set[n]=f(z_new,x_new)
+
                 #f=interpolate.RectBivariateSpline(x,z,data)
                 #img_set[n]=f(x_new,z_new)
+                delta_t=time.time()-start_time
+                fps=(n+1-img_frames)/delta_t
+                eta=(data_frames-n)/fps
+                eta_hour=int(eta/3600)
+                eta_min=int((eta-eta_hour*3600)/60)
+                eta_sec=int(eta-eta_hour*3600-eta_min*60)
+                LOG.debug("frame %d, fps %0.1f, eta %02d:%02d:%02d",n,fps,eta_hour,eta_min,eta_sec)
 
 class Grid(object):
     def __init__(self,N,L):
