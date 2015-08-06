@@ -29,7 +29,7 @@ setup(
 	version=ver,
 	scripts=['src/scripts/pardiff.py'],
 	package_dir={'stagyy': src},
-	packages=['stagyy','stagyy.ic'], 
+	packages=['stagyy','stagyy.ic','stagyy.image'], 
 	license='GPL 2.0', 
 	classifiers=[
 'Development Status :: 4 - Beta',
