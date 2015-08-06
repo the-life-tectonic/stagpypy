@@ -65,8 +65,47 @@ def output_csv(diffs,pars):
         map(v.append,[str(val) for val in d['values']])
         print(','.join(v))
 
+def output_tab(diffs,pars):
+    # The file names
+    header = '""\t'+'\t'.join(['"%s"'%l for l in pars])
+    print(header)
 
-OUTPUTS= { 'txt': output_txt, 'csv': output_csv }
+    for d in diffs:
+        v=[d['section']+'/'+d['key']]
+        map(v.append,[str(val) for val in d['values']])
+        print('\t'.join(v))
+
+def output_html(diffs,pars):
+    print('<table>')
+    # The file names
+    header = '<tr><th>&nbsp</th>%s</tr>'%' '.join(['<th>%s<th>'%l for l in pars])
+    print(header)
+
+    for d in diffs:
+        v=[d['section']+'/'+d['key']]
+        map(v.append,[str(val) for val in d['values']])
+        print('<tr>%s</tr>'%''.join(['<th>%s<th>'%l for l in v]))
+    print('</table>')
+
+def output_latex(diffs,pars):
+    print_tex("\\begin{tabular}{l%s}"%(" r"*len(pars)))
+    # The file names
+    header = '\n'.join([' & \\multicolumn{1}{c}{%s}'%l for l in pars])
+    print_tex("\\\\ \\hline")
+    print_tex(header)
+    print_tex("\\\\ \\hline")
+
+    for d in diffs:
+        v=[d['section']+'/'+d['key']]
+        map(v.append,[str(val) for val in d['values']])
+        print_tex('%s \\\\'%' & '.join(v))
+    print_tex("\\\\ \\hline")
+    print_tex("\\end{tabular}")
+
+def print_tex(s):
+    print(s.replace('_','\\_'))
+
+OUTPUTS= { 'txt': output_txt, 'csv': output_csv, 'tab': output_tab , 'html': output_html, 'latex': output_latex}
 
 if __name__ == "__main__":
 #   import atexit
@@ -81,7 +120,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser('Compares multiple par files, based on values (better than diff)')
     parser.add_argument('par',nargs='*',help='Name of the par files to compare')
     parser.add_argument('-v',dest='verbose',action='store_true',help='Verbose output')
-    parser.add_argument('-f',dest='format',default='txt',help='Output type')
+    parser.add_argument('-f',dest='format',default='txt',help='Output type: %s'%', '.join(OUTPUTS.keys()))
     args=parser.parse_args()
 
     if args.verbose:
