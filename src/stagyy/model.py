@@ -10,6 +10,9 @@ import sys
 import struct
 import geometry
 from evtk.hl import pointsToVTK
+from image import image2d
+from image import viz
+import stagyy.signal as ssig
 
 LOG=logging.getLogger(__name__)
 LOG_RN=logging.getLogger(__name__+'.read_native')
@@ -112,7 +115,10 @@ class Model(object):
 
         # The available fields
         self.fields=sorted(set([ f[len(self.output_file_stem_path)+1:-5] for f in glob.glob(self.output_file_stem_path+'_*[0-9][0-9][0-9][0-9][0-9]') ]))
-    
+   
+    def get_field_filename_pattern(self,field):
+        return self.output_file_stem_path+'_'+field.prefix+'%05d'
+
     def __str__(self):
         return "Model(%s)"%self.dir
 
@@ -129,6 +135,71 @@ def suite_to_h5(suite,dest,fields):
 		if not os.path.exists(data_dir):
 			os.makedirs(data_dir)
 		model_to_h5(model,data_dir,fields)
+
+def render_png(model,dest,img_dir,fields):
+    gallery=viz.Gallery()
+    gallery.register_renderer('ed',viz.Log10Renderer,{})
+    gallery.register_renderer('stress',viz.Log10Renderer,{'vmax':1e10,'vmin':1e5})
+    gallery.register_renderer('str',viz.Renderer,{'vmax':500e6,'vmin':1e6})
+    gallery.register_renderer('eta',viz.Log10Renderer,{'colormap':'PuBu','under_color':'2DD6D6','under_alpha':0.2,'vmin':1e19,'vmax':1e24})
+    gallery.register_renderer('dwtr',viz.Renderer,{'colormap':'alpha_green'})
+
+    for field in fields:
+        if ssig.WALLTIME:
+            break
+        try:
+            LOG.debug('Rendering field %s',field.name)
+            h5_filename=os.path.join(dest,get_h5_filename(model,field))
+            h5_file=h5py.File(h5_filename,'r')
+            LOG.debug('H5 file: %s',h5_filename)
+            LOG.debug('H5 itmes: %s',str(h5_file.items()))
+            image=h5_file['image']
+            LOG.debug('Available datasets: %s',str(image.items()))
+            for dset_name in ['data','p','v','vx','vy','vz','strinv','strx','stry','strz']:
+                if dset_name in image: 
+                    renderer_name=field.prefix if dset_name=='data' else dset_name
+                    LOG.debug('Rendering dataset %s',dset_name)
+                    data=image[dset_name]
+                    LOG.debug('Rendering %d frames',data.shape[0])
+                    LOG.debug('Image size: %s',str(data.shape[1:]))
+                    for frame_num in range(data.shape[0]):
+                        if ssig.WALLTIME:
+                            break
+                        img_file=gallery.get_img(img_dir,renderer_name,frame_num,{})
+                        if img_file==None:
+                            LOG.debug('Rendering frame %d',frame_num)
+                            img_file=gallery.render_img(img_dir,renderer_name,frame_num,data[frame_num],{})
+                            LOG.debug('Rendered frame %d as %s',frame_num,img_file)
+                        else:
+                            LOG.debug('Frame %d already exists as %s',frame_num,img_file)
+        finally:
+            h5_file.close()
+
+def model_2d_images(model,dest,fields):
+    constant_spacing=model.par['geometry']['zspacing_mode']=="constant" or all([v==1 for k,v in model.par['geometry'].items() if k.startswith('dresl')])
+    LOG.debug("Spacing is %s"%("constant" if constant_spacing else "refined"))
+    if constant_spacing:
+        LOG.error("Not implemented yet")
+    else:
+        for field in fields:
+            if ssig.WALLTIME:
+                break
+            h5_filename=os.path.join(dest,get_h5_filename(model,field))
+            h5_file=h5py.File(h5_filename,'a')
+            LOG.debug('H5 file: %s',h5_filename)
+            LOG.debug('H5 itmes: %s',str(h5_file.items()))
+            if 'image' in h5_file:
+                LOG.debug('H5 itmes: %s',str(h5_file['image'].items()))
+            Lz=model.par['geometry']['D_dimensional']
+            Lx=Lz*model.par['geometry']['aspect_ratio(1)']
+            LOG.debug('Dimensional shape %dx%d',Lx,Lz)
+            dL=np.diff(h5_file['z']).min()
+            LOG.debug('Dimensional cell size %f',dL)
+            Pz=int(np.floor(Lz/dL))
+            Px=int(np.floor(Lx/dL))
+            LOG.debug('Interpolated grid size size (x,z) %d x %d',Px,Pz)
+            image2d.h5_img_interpolate(h5_file,Lx,Lz,Px,Pz)
+            h5_file.close()
 
 def interpolate_model_xz(model,dest,fields):
     constant_spacing=model.par['geometry']['zspacing_mode']=="constant" or all([v==1 for k,v in model.par['geometry'].items() if k.startswith('dresl')])
@@ -160,6 +231,8 @@ def model_to_h5(model,dest,fields, overwrite=False):
     LOG.debug('There should be %d frames available',model.frames)
     result=[]
     for field in fields:
+        if ssig.WALLTIME:
+            break
         LOG.debug('Processing field %s',field.name)
         h5_filename=os.path.join(dest,get_h5_filename(model,field))
         frame_count=field_to_h5( h5_filename, os.path.join(model.dir,model.output_file_stem), field, model.grid_size, model.frames, overwrite)
@@ -216,153 +289,229 @@ def field_to_h5(h5_filename, output_file_stem, field, shape, frames, overwrite=F
     frame_start=0
 
     try:
-        if 'frame' in h5_file: # Existing file
-            frame_start=len(h5_file['frame'])
-            LOG.debug('There are %d existing frames',frame_start)
-            if frame_start<frames:
-                LOG.debug('Processing an additional %d frames',frames-frame_start);
-                frameDSet=h5_file['frame']
-                frameDSet.resize((frames,2))
-                if field.scalar:
-                    dataDSet=h5_file['data']
-                    dataDSet.resize((frames,)+shape)
-                    fmax=dataDSet.attrs['max']
-                    fmin=dataDSet.attrs['min']
-                else: # this is Vx, Vy, Vz and p (pressure)
-                    vxDSet=h5_file['vx']
-                    vxDSet.resize((frames,)+shape)
-                    vxmax=vxDSet.attrs['max']
-                    vxmin=vxDSet.attrs['min']
+        if not ssig.WALLTIME:
+            if 'frame' in h5_file: # Existing file
+                frame_start=len(h5_file['frame'])
+                LOG.debug('There are %d existing frames',frame_start)
 
-                    vyDSet=h5_file['vy']
-                    vyDSet.resize((frames,)+shape)
-                    vymax=vyDSet.attrs['max']
-                    vymin=vyDSet.attrs['min']
-
-                    vzDSet=h5_file['vz']
-                    vzDSet.resize((frames,)+shape)
-                    vzmax=vzDSet.attrs['max']
-                    vzmin=vzDSet.attrs['min']
-
-                    vDSet=h5_file['v']
-                    vDSet.resize((frames,)+shape)
-                    vmax=vDSet.attrs['max']
-                    vmin=vDSet.attrs['min']
-
-                    pDSet=h5_file['p']
-                    pDSet.resize((frames,)+shape)
-                    pmax=pDSet.attrs['max']
-                    pmin=pDSet.attrs['min']
-
-                xDSet=h5_file['x']
-                yDSet=h5_file['y']
-                zDSet=h5_file['z']
-                zgDSet=h5_file['zg']
-                #xyzDSet=h5_file['xyz']
-        else: # a new file
-            LOG.debug("'frame' dataset not found, assuming a new file")
-            # The file attribues
-            h5_file.attrs['field']=field.name
-            # The data dataset
-            if field.scalar:
-                dataDSet=h5_file.create_dataset('data', (frames,)+shape,compression='gzip', compression_opts=4,maxshape=(None,)+shape)
-                fmax=sys.float_info.min
-                fmin=sys.float_info.max
-            else: # this is Vx, Vy, Vz and p (pressure)
-                vxDSet=h5_file.create_dataset('vx', (frames,)+shape,compression='gzip', compression_opts=4,maxshape=(None,)+shape)
-                vxmax=sys.float_info.min
-                vxmin=sys.float_info.max
-                vyDSet=h5_file.create_dataset('vy', (frames,)+shape,compression='gzip', compression_opts=4,maxshape=(None,)+shape)
-                vymax=sys.float_info.min
-                vymin=sys.float_info.max
-                vzDSet=h5_file.create_dataset('vz', (frames,)+shape,compression='gzip', compression_opts=4,maxshape=(None,)+shape)
-                vzmax=sys.float_info.min
-                vzmin=sys.float_info.max
-                vDSet=h5_file.create_dataset('v', (frames,)+shape,compression='gzip', compression_opts=4,maxshape=(None,)+shape)
-                vmax=sys.float_info.min
-                vmin=sys.float_info.max
-                pDSet= h5_file.create_dataset('p',  (frames,)+shape,compression='gzip', compression_opts=4,maxshape=(None,)+shape)
-                pmax=sys.float_info.min
-                pmin=sys.float_info.max
-
-            # The frame dataset
-            frameDSet=h5_file.create_dataset('frame', (frames,2) ,compression='gzip', compression_opts=4,maxshape=(None,2))
-            # The x,y,z grid centers
-            xDSet=h5_file.create_dataset('x', (shape[0],),compression='gzip',compression_opts=4)
-            yDSet=h5_file.create_dataset('y', (shape[1],),compression='gzip',compression_opts=4)
-            zDSet=h5_file.create_dataset('z', (shape[2],),compression='gzip',compression_opts=4)
-            zgDSet=h5_file.create_dataset('zg',(2*shape[2]+1,),compression='gzip',compression_opts=4)
-            #xyzDSet=h5_file.create_dataset('xyz', (reduce(lambda a,b: a*b, shape),3),compression='gzip',compression_opts=4)
-
-        LOG.debug('Starting with frame %d to frame %d',frame_start,frames-1)
-
-
-        if frame_start<frames:
-            for frame in range(frame_start,frames):
-                file=frame_pattern%frame
-                LOG.debug('Reading native file %s',file)
-                if not os.path.exists(file):
-                    LOG.warning('Native file "%s" does not exist, though %d frames expected starting at %d, skipping' % (file,frames,frame_start))
-                    break;
-                try:
-                    d,step,time,x,y,z,zg=read_native(file,field.scalar)
+                if frame_start<frames:
+                    LOG.debug('Processing an additional %d frames',frames-frame_start);
+                    frameDSet=h5_file['frame']
+                    frameDSet.resize((frames,2))
                     if field.scalar:
-                        LOG.debug("Raw data has the shape: %s",str(d.shape))
-                        fmax=max(fmax,d.max())
-                        fmin=min(fmin,d.min())
-                        dataDSet[frame]=d
-                        LOG.debug('(min,max)=(%f,%f)',fmin,fmax)
+                        dataDSet=h5_file['data']
+                        dataDSet.resize((frames,)+shape)
+                        fmax=dataDSet.attrs['max']
+                        fmin=dataDSet.attrs['min']
+                    else: # this is Vx, Vy, Vz and p (pressure)
+                        if field.prefix=='vp':
+                            vxDSet=h5_file['vx']
+                            vxDSet.resize((frames,)+shape)
+                            vxmax=vxDSet.attrs['max']
+                            vxmin=vxDSet.attrs['min']
+
+                            vyDSet=h5_file['vy']
+                            vyDSet.resize((frames,)+shape)
+                            vymax=vyDSet.attrs['max']
+                            vymin=vyDSet.attrs['min']
+
+                            vzDSet=h5_file['vz']
+                            vzDSet.resize((frames,)+shape)
+                            vzmax=vzDSet.attrs['max']
+                            vzmin=vzDSet.attrs['min']
+
+                            vDSet=h5_file['v']
+                            vDSet.resize((frames,)+shape)
+                            vmax=vDSet.attrs['max']
+                            vmin=vDSet.attrs['min']
+
+                            pDSet=h5_file['p']
+                            pDSet.resize((frames,)+shape)
+                            pmax=pDSet.attrs['max']
+                            pmin=pDSet.attrs['min']
+                        elif field.prefix=='sx':
+                            strxDSet=h5_file['strx']
+                            strxDSet.resize((frames,)+shape)
+                            strxmax=strxDSet.attrs['max']
+                            strxmin=strxDSet.attrs['min']
+
+                            stryDSet=h5_file['stry']
+                            stryDSet.resize((frames,)+shape)
+                            strymax=stryDSet.attrs['max']
+                            strymin=stryDSet.attrs['min']
+
+                            strzDSet=h5_file['strz']
+                            strzDSet.resize((frames,)+shape)
+                            strzmax=strzDSet.attrs['max']
+                            strzmin=strzDSet.attrs['min']
+
+                            strinvDSet=h5_file['strinv']
+                            strinvDSet.resize((frames,)+shape)
+                            strinvmax=strinvDSet.attrs['max']
+                            strinvmin=strinvDSet.attrs['min']
+                        else:
+                            raise ValueError('Unknown vector field: %s',str(field))
+
+                    xDSet=h5_file['x']
+                    yDSet=h5_file['y']
+                    zDSet=h5_file['z']
+                    zgDSet=h5_file['zg']
+                    #xyzDSet=h5_file['xyz']
+            else: # a new file
+                LOG.debug("'frame' dataset not found, assuming a new file")
+                # The file attribues
+                h5_file.attrs['field']=field.name
+                # The data dataset
+                if field.scalar:
+                    dataDSet=h5_file.create_dataset('data', (frames,)+shape,compression='gzip', compression_opts=4,maxshape=(None,)+shape)
+                    fmax=sys.float_info.min
+                    fmin=sys.float_info.max
+                else: # this is Vx, Vy, Vz and p (pressure)
+                    if field.prefix=='vp':
+                        vxDSet=h5_file.create_dataset('vx', (frames,)+shape,compression='gzip', compression_opts=4,maxshape=(None,)+shape)
+                        vxmax=sys.float_info.min
+                        vxmin=sys.float_info.max
+                        vyDSet=h5_file.create_dataset('vy', (frames,)+shape,compression='gzip', compression_opts=4,maxshape=(None,)+shape)
+                        vymax=sys.float_info.min
+                        vymin=sys.float_info.max
+                        vzDSet=h5_file.create_dataset('vz', (frames,)+shape,compression='gzip', compression_opts=4,maxshape=(None,)+shape)
+                        vzmax=sys.float_info.min
+                        vzmin=sys.float_info.max
+                        vDSet=h5_file.create_dataset('v', (frames,)+shape,compression='gzip', compression_opts=4,maxshape=(None,)+shape)
+                        vmax=sys.float_info.min
+                        vmin=sys.float_info.max
+                        pDSet= h5_file.create_dataset('p',  (frames,)+shape,compression='gzip', compression_opts=4,maxshape=(None,)+shape)
+                        pmax=sys.float_info.min
+                        pmin=sys.float_info.max
+                    elif field.prefix=='sx':
+                        strxDSet=h5_file.create_dataset('strx', (frames,)+shape,compression='gzip', compression_opts=4,maxshape=(None,)+shape)
+                        strxmax=sys.float_info.min
+                        strxmin=sys.float_info.max
+                        stryDSet=h5_file.create_dataset('stry', (frames,)+shape,compression='gzip', compression_opts=4,maxshape=(None,)+shape)
+                        strymax=sys.float_info.min
+                        strymin=sys.float_info.max
+                        strzDSet=h5_file.create_dataset('strz', (frames,)+shape,compression='gzip', compression_opts=4,maxshape=(None,)+shape)
+                        strzmax=sys.float_info.min
+                        strzmin=sys.float_info.max
+                        strinvDSet=h5_file.create_dataset('strinv', (frames,)+shape,compression='gzip', compression_opts=4,maxshape=(None,)+shape)
+                        strinvmax=sys.float_info.min
+                        strinvmin=sys.float_info.max
                     else:
-                        vx,vy,vz,p=d
-                        v=np.sqrt(vx**2+vy**2+vz**2)
+                        raise ValueError('Unknown vector field: %s',str(field))
 
-                        vxmax=max(vxmax,vx.max())
-                        vxmin=min(vxmin,vx.min())
-                        vxDSet[frame]=vx
+                # The frame dataset
+                frameDSet=h5_file.create_dataset('frame', (frames,2) ,compression='gzip', compression_opts=4,maxshape=(None,2))
+                # The x,y,z grid centers
+                xDSet=h5_file.create_dataset('x', (shape[0],),compression='gzip',compression_opts=4)
+                yDSet=h5_file.create_dataset('y', (shape[1],),compression='gzip',compression_opts=4)
+                zDSet=h5_file.create_dataset('z', (shape[2],),compression='gzip',compression_opts=4)
+                zgDSet=h5_file.create_dataset('zg',(2*shape[2]+1,),compression='gzip',compression_opts=4)
+                #xyzDSet=h5_file.create_dataset('xyz', (reduce(lambda a,b: a*b, shape),3),compression='gzip',compression_opts=4)
 
-                        vymax=max(vymax,vy.max())
-                        vymin=min(vymin,vy.min())
-                        vyDSet[frame]=vy
+            LOG.debug('Starting with frame %d to frame %d',frame_start,frames-1)
 
-                        vzmax=max(vzmax,vz.max())
-                        vzmin=min(vzmin,vz.min())
-                        vzDSet[frame]=vz
 
-                        vmax=max(vmax,v.max())
-                        vmin=min(vmin,v.min())
-                        vDSet[frame]=v
+            if frame_start<frames:
+                for frame in range(frame_start,frames):
+                    file=frame_pattern%frame
+                    LOG.debug('Reading native file %s',file)
+                    if not os.path.exists(file):
+                        LOG.warning('Native file "%s" does not exist, though %d frames expected starting at %d, skipping' % (file,frames,frame_start))
+                        break;
+                    try:
+                        d,step,time,x,y,z,zg=read_native(file,field.scalar)
+                        if field.scalar:
+                            LOG.debug("Raw data has the shape: %s",str(d.shape))
+                            fmax=max(fmax,d.max())
+                            fmin=min(fmin,d.min())
+                            dataDSet[frame]=d
+                            LOG.debug('(min,max)=(%f,%f)',fmin,fmax)
+                        else:
+                            if field.prefix=='vp':
+                                vx,vy,vz,p=d
+                                v=np.sqrt(vx**2+vy**2+vz**2)
 
-                        pmax=max(pmax,p.max())
-                        pmin=min(pmin,p.min())
-                        pDSet[frame]=p
+                                vxmax=max(vxmax,vx.max())
+                                vxmin=min(vxmin,vx.min())
+                                vxDSet[frame]=vx
 
-                       
-                    # The timestamp info
-                    frameDSet[frame,0]=step
-                    frameDSet[frame,1]=time
-                except:
-                    LOG.exception('Exception reading native field %s, frame %d, from file %s' % (field.name,frame,file))
+                                vymax=max(vymax,vy.max())
+                                vymin=min(vymin,vy.min())
+                                vyDSet[frame]=vy
 
-            if field.scalar:
-                dataDSet.attrs['max']=fmax
-                dataDSet.attrs['min']=fmin
-            else:
-                vxDSet.attrs['max']=vxmax
-                vxDSet.attrs['min']=vxmin
-                vyDSet.attrs['max']=vymax
-                vyDSet.attrs['min']=vymin
-                vzDSet.attrs['max']=vzmax
-                vzDSet.attrs['min']=vzmin
-                vDSet.attrs['max']=vmax
-                vDSet.attrs['min']=vmin
-                pDSet.attrs['max']=pmax
-                pDSet.attrs['min']=pmin
+                                vzmax=max(vzmax,vz.max())
+                                vzmin=min(vzmin,vz.min())
+                                vzDSet[frame]=vz
 
-            xDSet[:]=x[:]
-            yDSet[:]=y[:]
-            zDSet[:]=z[:]
-            zgDSet[:]=zg[:]
-            #xyzDSet[:]=xyz_2_location(x,y,z)
+                                vmax=max(vmax,v.max())
+                                vmin=min(vmin,v.min())
+                                vDSet[frame]=v
+
+                                pmax=max(pmax,p.max())
+                                pmin=min(pmin,p.min())
+                                pDSet[frame]=p
+                            elif field.prefix=='sx':
+                                strx,stry,strz,strinv=d
+
+                                strxmax=max(strxmax,strx.max())
+                                strxmin=min(strxmin,strx.min())
+                                strxDSet[frame]=strx
+
+                                strymax=max(strymax,stry.max())
+                                strymin=min(strymin,stry.min())
+                                stryDSet[frame]=stry
+
+                                strzmax=max(strzmax,strz.max())
+                                strzmin=min(strzmin,strz.min())
+                                strzDSet[frame]=strz
+
+
+                                strinvmax=max(strinvmax,strinv.max())
+                                strinvmin=min(strinvmin,strinv.min())
+                                strinvDSet[frame]=strinv
+                            else:
+                                raise ValueError('Unknown vector field: %s',str(field))
+
+
+                           
+                        # The timestamp info
+                        frameDSet[frame,0]=step
+                        frameDSet[frame,1]=time
+                    except:
+                        LOG.exception('Exception reading native field %s, frame %d, from file %s' % (field.name,frame,file))
+
+                if field.scalar:
+                    dataDSet.attrs['max']=fmax
+                    dataDSet.attrs['min']=fmin
+                else:
+                    if field.prefix=='vp':
+                        vxDSet.attrs['max']=vxmax
+                        vxDSet.attrs['min']=vxmin
+                        vyDSet.attrs['max']=vymax
+                        vyDSet.attrs['min']=vymin
+                        vzDSet.attrs['max']=vzmax
+                        vzDSet.attrs['min']=vzmin
+                        vDSet.attrs['max']=vmax
+                        vDSet.attrs['min']=vmin
+                        pDSet.attrs['max']=pmax
+                        pDSet.attrs['min']=pmin
+                    elif field.prefix=='sx':
+                        strxDSet.attrs['max']=strxmax
+                        strxDSet.attrs['min']=strxmin
+                        stryDSet.attrs['max']=strymax
+                        stryDSet.attrs['min']=strymin
+                        strzDSet.attrs['max']=strzmax
+                        strzDSet.attrs['min']=strzmin
+                        strinvDSet.attrs['max']=strinvmax
+                        strinvDSet.attrs['min']=strinvmin
+                    else:
+                        raise ValueError('Unknown vector field: %s',str(field))
+
+                xDSet[:]=x[:]
+                yDSet[:]=y[:]
+                zDSet[:]=z[:]
+                zgDSet[:]=zg[:]
+                #xyzDSet[:]=xyz_2_location(x,y,z)
     except:
         LOG.exception("Exception coverting native to h5")
     finally: 

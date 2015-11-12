@@ -3,33 +3,33 @@ from scipy.special import erf,erfinv
 from constants import s_in_y,R
 
 def cmy2ms(v):
-	return v/(100*s_in_y)
+    return v/(100*s_in_y)
 
 # See pg 158 Turcotte and Schubert
 def T_hs(T0,T1,d,t,kappa):
-	"""
-	Gives the temperture at depth 'd' given the top ('T0') and bottom ('T1') thermal
-	boundary conditions, and thermal diffusivity ('kappa')
-	"""
-	return T0+(T1-T0)*erf(d/(2*np.sqrt(kappa*t)))
+    """
+    Gives the temperture at depth 'd' given the top ('T0') and bottom ('T1') thermal
+    boundary conditions, and thermal diffusivity ('kappa')
+    """
+    return T0+(T1-T0)*erf(d/(2*np.sqrt(kappa*t)))
 
 def depth_hs(T0,T1,T,t,kappa):
-	"""
-	Gives the depth at where the temperature is T given a half-space cooling model
-	with top and bottom thermal bounday conditions T0 and T1 and thermal diffusivity kappa
-	"""
-	return 2*np.sqrt(kappa*t)*erfinv( (T-T0)/(T1-T0) )
+    """
+    Gives the depth at where the temperature is T given a half-space cooling model
+    with top and bottom thermal bounday conditions T0 and T1 and thermal diffusivity kappa
+    """
+    return 2*np.sqrt(kappa*t)*erfinv( (T-T0)/(T1-T0) )
 
 def age_hs(T0,T1,T,d,kappa):
-	"""
-	Gives the age of the plate when the temperature is T at depth d
-	for a half-space cooling model with a top and bottom boundary conditions T0 and T1 and
-	thermal diffusivity kappa.
-	"""
-	return (1/kappa)*(d/(2*erfinv( (T-T0)/(T1-T0) )))**2
+    """
+    Gives the age of the plate when the temperature is T at depth d
+    for a half-space cooling model with a top and bottom boundary conditions T0 and T1 and
+    thermal diffusivity kappa.
+    """
+    return (1/kappa)*(d/(2*erfinv( (T-T0)/(T1-T0) )))**2
 
 def Ra(rho,g,T_expansion,delta_T,length,eta,T_diffusivity):
-	return rho*g*T_expansion*delta_T*length**3/(eta*T_diffusivity)
+    return rho*g*T_expansion*delta_T*length**3/(eta*T_diffusivity)
 
 def boundary_layer(ra,ra_ref):
     """Returns the relative boundary layer thickness for a system 
@@ -70,17 +70,20 @@ maxits is the maximum number of itterations.
 def arrhenius(E,V,eta_ref,T_ref,p_ref):
     return lambda T,p: eta_ref * np.exp( ((E+V*p)/(R*T)) - ((E+V*p_ref)/(R*T_ref)) ) 
 
-def combinations(*args):
-	c=[]
-	l=args[0]
-	for i in l:
-		if len(args)>1:
-			for i2 in combinations(*args[1:]):
-				c.append( [i]+i2 )
-		else:
-			c.append( [i] ) 
-	return c
-		
+def combinations(*args,**kwargs):
+    c=[]
+    l=args[0]
+    for i in l:
+        if len(args)>1:
+            for i2 in combinations(*args[1:]):
+                c.append( [i]+i2 )
+        else:
+            c.append( [i] ) 
+    if kwargs.get('enumerate',False):
+        for n in range(len(c)):
+            c[n].insert(0,n)
+    return c
+        
 def man_exp(v):
     e=np.log10(v).astype(int)
     m=v/10.**e

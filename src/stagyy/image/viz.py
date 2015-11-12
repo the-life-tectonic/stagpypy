@@ -199,6 +199,25 @@ class Log10Renderer(Renderer):
         a=10**np.vstack([np.linspace(vmax,vmin,ncolors)]*width).T
         return self.render(a);
 
+def symlog10(a,threshold=1,fillvalue=0):
+    masked=np.ma.masked_inside(a,-threshold,threshold)
+    sign = np.sign(a)
+    result=np.ma.log10(abs(masked))*sign
+    result.data[result.mask]=fillvalue
+    return result.data
+
+class SymLog10Renderer(Renderer):
+    def __init__(self,**kwargs):
+        kwargs['filter']=symlog10
+        super(SymLog10Renderer, self).__init__(**kwargs)
+
+    def colorbar(self,colors=None,width=20):
+        vmin=symlog10(self.vmin)
+        vmax=symlog10(self.vmax)
+        ncolors=2**self._depth if colors==None else colors
+        a=10**np.vstack([np.linspace(vmax,vmin,ncolors)]*width).T
+        return self.render(a);
+
 def get_init_args(klass,args):
     try:
         argspec=inspect.getargspec(klass.__init__)
@@ -240,8 +259,6 @@ class Gallery(Thread):
         r_class,init_args,defaults=self.get_renderer(renderer_name)
         custom_args=[i for i in kwargs.items() if i[0] in init_args]
         args_str=self.kwargs_to_str(renderer_name,custom_args)
-#        args=defaults.copy()
-#        args.update(custom_args)
         img_file=os.path.join(dir,"%s-%05d.png"%(args_str,frame_num))
         if os.path.exists(img_file):
             return img_file

@@ -9,9 +9,7 @@ from stagyy.util import T_hs
 
 LOG=logging.getLogger(__name__)
 
-def log(level=logging.DEBUG):
-    handler=logging.StreamHandler()
-    handler.setLevel(level)
+def log(level=logging.DEBUG,handler=logging.StreamHandler()):
     LOG.addHandler(handler)
     LOG.setLevel(level)
 
@@ -102,14 +100,13 @@ class Scene(object):
         par['boundaries']['air_layer']=self.air_layer>0
         par['boundaries']['air_thickness']=self.air_layer
 
-    def calc_temp(self):
+    def calc_temp(self,pb=ui.NullProgressBar()):
         # Set the background viscosity
         temp=np.ones(self.N)*self.T_mantle+(np.random.rand(*self.N)*self.amp_T-self.amp_T/2)
         LOG.debug('temp.shape=%s'%str(temp.shape))
         # The progress bar
-        total=self.N[0]*self.N[1]
+        pb.total=self.N[0]*self.N[1]-1
         i=0
-        pb=ui.ProgressBar(total=total-1)
         for iz,z in enumerate(self.grid.z_center):
             for ix,x in enumerate(self.grid.x_center):
                 pb.progress(i)
@@ -131,7 +128,7 @@ class Scene(object):
                         break
         return temp
 
-    def calc_tracers(self,tracers):
+    def calc_tracers(self,tracers,pb=ui.NullProgressBar()):
         x=np.random.random(tracers)*self.L[0]
         z=np.random.random(tracers)*self.L[1]
         depth=self.grid.L[1]-z-self.air_layer
@@ -140,7 +137,7 @@ class Scene(object):
             water=np.zeros(tracers)
         # The progress bar
         i=0
-        pb=ui.ProgressBar(total=tracers-1)
+        pb.total=tracers-1
         for i in xrange(tracers):
             for o in self.objects:
                 tracer=o.tracer(x[i],z[i],depth[i])
@@ -158,19 +155,19 @@ class Scene(object):
         else:
             return x,z,tracer_type
 
-    def write_temp(self,out_dir):
-        temp=self.calc_temp()
+    def write_temp(self,out_dir,pb=ui.NullProgressBar()):
+        temp=self.calc_temp(pb)
         filename=os.path.join(out_dir,'init.h5')
         h5file=h5py.File(filename)
         h5file.create_dataset('temp', data=temp)
         h5file.close()
         return filename
 
-    def write_tracers(self,out_dir,tracers,tracers_per_cell=True):
+    def write_tracers(self,out_dir,tracers,tracers_per_cell=True,pb=ui.NullProgressBar()):
         try:
             if tracers_per_cell:
                 tracers=tracers*self.grid.cells
-            tracers=self.calc_tracers(tracers)
+            tracers=self.calc_tracers(tracers,pb)
             filename=os.path.join(out_dir,'init.h5')
             h5file=h5py.File(filename)
             h5file.create_dataset('tracers', data=tracers,compression='gzip')
@@ -192,27 +189,28 @@ class CartesianScene(Scene):
         par['geometry']['nztot']=self.N[1]
         par['geometry']['shape']='cartesian'
 
-    def calc_temp(self):
-        temp=super(CartesianScene,self).calc_temp()
+    def calc_temp(self,pb=ui.NullProgressBar()):
+        temp=super(CartesianScene,self).calc_temp(pb)
         temp=temp.reshape(self.N[0],1,self.N[1],1)
         LOG.debug('temp.shape=%s'%str(temp.shape))
         return temp
 
-    def calc_tracers(self,tracers):
+    def calc_tracers(self,tracers,pb=ui.NullProgressBar()):
         if self.water:
-            x,z,tracer_type,water=super(CartesianScene,self).calc_tracers(tracers)
+            x,z,tracer_type,water=super(CartesianScene,self).calc_tracers(tracers,pb)
             return np.vstack((x,np.zeros(tracers),z,tracer_type,water)).T
         else:
-            x,z,tracer_type=super(CartesianScene,self).calc_tracers(tracers)
+            x,z,tracer_type=super(CartesianScene,self).calc_tracers(tracers,pb)
             return np.vstack((x,np.zeros(tracers),z,tracer_type)).T
 
 class AnnulusScene(Scene):
     def __init__(self,grid,alpha=3e-5,g=9.81,eta0=1e21,rho=3300.0,Cp=1200.0,k=3.0,kappa=1e-6,
-                 T_surface=300.0, T_mantle=1600.0, eta_air=1e18, air_layer=0.0,crust_depth=0.0,amp_T=0,aspect_ratio=6.3):
+                 T_surface=300.0, T_mantle=1600.0, eta_air=1e18, air_layer=0.0,crust_depth=0.0,amp_T=0,aspect_ratio=6.3,cmb=0):
         super(AnnulusScene, self).__init__(grid,alpha=alpha,g=g,eta0=eta0,rho=rho,Cp=Cp,k=k,kappa=kappa,
                                       T_surface=T_surface, T_mantle=T_mantle, eta_air=eta_air, 
                                       air_layer=air_layer,crust_depth=crust_depth,amp_T=amp_T)
-        self.aspect_ratio=self.aspect_ratio
+        self.aspect_ratio=aspect_ratio
+        self.cmb=cmb
     def update_par(self,par):
         super(AnnulusScene,self).update_par(par)
         par['geometry']['aspect_ratio(1)']=0
@@ -220,20 +218,21 @@ class AnnulusScene(Scene):
         par['geometry']['nxtot']=1
         par['geometry']['nytot']=self.N[0]
         par['geometry']['nztot']=self.N[1]
-        par['geometry']['shape']='cartesian'
+        par['geometry']['shape']='spherical'
+        par['geometry']['r_cmb']=self.cmb
 
-    def calc_temp(self):
-        temp=super(AnnulusScene,self).calc_temp()
+    def calc_temp(self,pb=ui.NullProgressBar()):
+        temp=super(AnnulusScene,self).calc_temp(pb)
         temp=temp.reshape(1,self.N[0],self.N[1],1)
         LOG.debug('temp.shape=%s'%str(temp.shape))
         return temp
 
-    def calc_tracers(self,tracers):
+    def calc_tracers(self,tracers,pb=ui.NullProgressBar()):
         if self.water:
-            x,z,tracer_type,water=super(AnnulusScene,self).calc_tracers(tracers)
+            x,z,tracer_type,water=super(AnnulusScene,self).calc_tracers(tracers,pb)
             return np.vstack((np.zeros(tracers),x,z,tracer_type,water)).T
         else:
-            x,z,tracer_type=super(AnnulusScene,self).calc_tracers(tracers)
+            x,z,tracer_type=super(AnnulusScene,self).calc_tracers(tracers,pb)
             return np.vstack((np.zeros(tracers),x,z,tracer_type)).T
 
 class SceneObject(object):

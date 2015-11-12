@@ -347,5 +347,4 @@ def get_job(system,name,walltime,cpus,account,mpi_command,queue_name=None,**kwar
     if 'commands' not in kwargs: kwargs['commands']=[]
     kwargs['commands'].append(system.mpi_exec(cpus,mpi_command))
     job = system.scheduler(name,walltime,cpus,system.allocate_cpus(cpus),account,q,**kwargs)
-    print("get_job job = %s"%job)
     return job
