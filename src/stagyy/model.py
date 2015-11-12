@@ -9,6 +9,7 @@ import re
 import sys
 import struct
 import geometry
+import io
 from evtk.hl import pointsToVTK
 from image import image2d
 from image import viz
@@ -694,10 +695,10 @@ def read_native(filename,scalar=None):
         f.close()
     return DATA_3D,istep,time,x,y,z,zg
 
-def read_tracers(filename,callback=lambda x: None):
+def read_tracers(filename,callback=None,buffering=8192):
     tracers=None
     LOG_TRA.debug("\nOpening %s"%filename)
-    f=open(filename);
+    f=io.open(filename,mode='rb',buffering=buffering);
 
     try:
         # Read the magic number
@@ -736,17 +737,21 @@ def read_tracers(filename,callback=lambda x: None):
                 LOG_TRA.debug('r_cmb=%f'%r_cmb)
 
             tracer_varname=[]
-
             for var_num in range(ntracervar_in):
                 tracer_varname.append(read_string(f,16).strip())
                 LOG_TRA.debug('tracer_varname[%d]="%s"'%(var_num,tracer_varname[var_num]))
-        t=np.zeros(ntrg*ntracervar_in)
-        t=t.reshape(ntrg,ntracervar_in)
+
+        t=np.zeros(nb_in*ntrg*ntracervar_in)
+        t=t.reshape(nb_in*ntrg,ntracervar_in)
         
         for ib in range(nb_in):
-            for i in range(ntrg):
-                t[i]=read_float32(f,ntracervar_in)
-                callback(100*float(i)/float(ntrg))
+            values=read_float32(f,ntrg*ntracervar_in)
+            values=values.reshape(ntrg,ntracervar_in)
+            t[ib*ntrg:ib*ntrg+ntrg]=values[:]
+#            for i in range(ntrg):
+#                t[ib*ntrg+i]=values[i]
+#                t[ib*ntrg+i]=read_float32(f,ntracervar_in)
+#                if callback: callback(100*float(i)/float(ntrg))
         tracers={}
         tracers['magic']=magic
         tracers['blocks']=nb_in
