@@ -178,12 +178,13 @@ def field_to_h5(model,dest,f,overwrite=False):
                 except:
                     LOG.exception('Exception reading native field %s, frame %d, from file %s' % (field.name,frame,file))
 
-            dataDSet.attrs['max']=fmax
-            dataDSet.attrs['min']=fmin
-            xDSet[:]=x[:]
-            yDSet[:]=y[:]
-            zDSet[:]=z[:]
-            zgDSet[:]=zg[:]
+            if( frames>0 ):
+                dataDSet.attrs['max']=fmax
+                dataDSet.attrs['min']=fmin
+                xDSet[:]=x[:]
+                yDSet[:]=y[:]
+                zDSet[:]=z[:]
+                zgDSet[:]=zg[:]
     except:
         LOG.exception("Exception coverting native to h5")
     finally: 
