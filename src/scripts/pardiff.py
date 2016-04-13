@@ -134,5 +134,8 @@ if __name__ == "__main__":
 
     # Calculate the differences
     diffs=model.par_diff(args.par,True)
-    OUTPUTS[args.format](diffs,args.par) 
+    if len(diffs)==0:
+        print('There are no differences.')
+    else:
+        OUTPUTS[args.format](diffs,args.par) 
 
