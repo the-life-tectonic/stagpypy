@@ -741,17 +741,17 @@ def read_tracers(filename,callback=None,buffering=8192):
                 tracer_varname.append(read_string(f,16).strip())
                 LOG_TRA.debug('tracer_varname[%d]="%s"'%(var_num,tracer_varname[var_num]))
 
-        t=np.zeros(nb_in*ntrg*ntracervar_in)
-        t=t.reshape(nb_in*ntrg,ntracervar_in)
+        t=np.memmap(filename+'.mmap',dtype=np.float32,mode='w+',shape=(nb_in*ntrg,ntracervar_in))
         
         for ib in range(nb_in):
-            values=read_float32(f,ntrg*ntracervar_in)
-            values=values.reshape(ntrg,ntracervar_in)
-            t[ib*ntrg:ib*ntrg+ntrg]=values[:]
-#            for i in range(ntrg):
-#                t[ib*ntrg+i]=values[i]
-#                t[ib*ntrg+i]=read_float32(f,ntracervar_in)
-#                if callback: callback(100*float(i)/float(ntrg))
+            page_offset=0
+            page_size=min(ntrg,10**20)
+            while page_offset<ntrg:
+                page_size=min(page_size,ntrg-page_offset)
+                values=read_float32(f,page_size*ntracervar_in)
+                values=values.reshape(page_size,ntracervar_in)
+                t[ib*ntrg+page_offset:ib*ntrg+page_offset+page_size]=values[:]
+                page_offset=+page_size
         tracers={}
         tracers['magic']=magic
         tracers['blocks']=nb_in
