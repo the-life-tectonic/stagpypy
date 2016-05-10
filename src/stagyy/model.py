@@ -963,12 +963,17 @@ class Par(dict):
         f.close()
 
     def __getitem__(self,key):
+        keys=key.split('.',1)
+        if len(keys)>1:
+            key,subkey=keys
+        else:
+            subkey=None
         try:
             val=dict.__getitem__(self,key)
         except KeyError:
             val={}
             self[key]=val
-        return val
+        return val[subkey] if subkey else val
 
     def __setitem__(self,key,val):
             dict.__setitem__(self,key,val)
