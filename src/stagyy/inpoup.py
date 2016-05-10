@@ -158,6 +158,11 @@ def field_to_h5(model,dest,f,overwrite=False):
             ndx=field.index(f)
             LOG.debug("Field %s is at index %d of raw data",f,ndx)
 
+            if 'max' in dataDSet.attrs:    
+                fmax=dataDSet.attrs['max']
+            if 'min' in dataDSet.attrs:    
+                fmin=dataDSet.attrs['min']
+            dataDSet.attrs['min']=fmin
             for frame in range(frame_start,frames):
                 file=frame_pattern%frame
                 LOG.debug('Reading native file %s',file)
