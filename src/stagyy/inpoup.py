@@ -154,42 +154,47 @@ def field_to_h5(model,dest,f,overwrite=False):
                 zDSet=h5_file.create_dataset('z', (shape[2],),compression='gzip',compression_opts=4)
                 zgDSet=h5_file.create_dataset('zg',(2*shape[2]+1,),compression='gzip',compression_opts=4)
 
+            # Process frames if there are frames to proc
             LOG.debug('Starting with frame %d to frame %d',frame_start,frames-1)
-            ndx=field.index(f)
-            LOG.debug("Field %s is at index %d of raw data",f,ndx)
+            if frame_start<frames:
+                ndx=field.index(f)
+                LOG.debug("Field %s is at index %d of raw data",f,ndx)
 
-            if 'max' in dataDSet.attrs:    
-                fmax=dataDSet.attrs['max']
-            if 'min' in dataDSet.attrs:    
-                fmin=dataDSet.attrs['min']
-            dataDSet.attrs['min']=fmin
-            for frame in range(frame_start,frames):
-                file=frame_pattern%frame
-                LOG.debug('Reading native file %s',file)
-                if not os.path.exists(file):
-                    LOG.warning('Native file "%s" does not exist, though %d frames expected starting at %d, skipping' % (file,frames,frame_start))
-                    break;
-                try:
-                    d,step,time,x,y,z,zg=read_native(file,field.scalar)
-                    d=d[ndx]
-                    LOG.debug("Raw data has the shape: %s",str(d.shape))
-                    fmax=max(fmax,d.max())
-                    fmin=min(fmin,d.min())
-                    LOG.debug('(min,max)=(%f,%f)',fmin,fmax)
-                    dataDSet[frame]=d
-                    # The timestamp info
-                    frameDSet[frame,0]=step
-                    frameDSet[frame,1]=time
-                except:
-                    LOG.exception('Exception reading native field %s, frame %d, from file %s' % (field.name,frame,file))
-
-            if( frames>0 ):
-                dataDSet.attrs['max']=fmax
+                if 'max' in dataDSet.attrs:    
+                    fmax=dataDSet.attrs['max']
+                if 'min' in dataDSet.attrs:    
+                    fmin=dataDSet.attrs['min']
                 dataDSet.attrs['min']=fmin
-                xDSet[:]=x[:]
-                yDSet[:]=y[:]
-                zDSet[:]=z[:]
-                zgDSet[:]=zg[:]
+                for frame in range(frame_start,frames):
+                    if ssig.WALLTIME:
+                        LOG.warning('Walltime hit converting native file.')
+                        break
+                    fname=frame_pattern%frame
+                    LOG.debug('Reading native file %s',fname)
+                    if not os.path.exists(fname):
+                        LOG.warning('Native file "%s" does not exist, though %d frames expected starting at %d, skipping' % (file,frames,frame_start))
+                        break
+                    try:
+                        d,step,time,x,y,z,zg=read_native(fname,field.scalar)
+                        d=d[ndx]
+                        LOG.debug("Raw data has the shape: %s",str(d.shape))
+                        fmax=max(fmax,d.max())
+                        fmin=min(fmin,d.min())
+                        LOG.debug('(min,max)=(%f,%f)',fmin,fmax)
+                        dataDSet[frame]=d
+                        # The timestamp info
+                        frameDSet[frame,0]=step
+                        frameDSet[frame,1]=time
+                    except:
+                        LOG.exception('Exception reading native field %s, frame %d, from file %s' % (field.name,frame,file))
+
+                if( frames>0 ):
+                    dataDSet.attrs['max']=fmax
+                    dataDSet.attrs['min']=fmin
+                    xDSet[:]=x[:]
+                    yDSet[:]=y[:]
+                    zDSet[:]=z[:]
+                    zgDSet[:]=zg[:]
     except:
         LOG.exception("Exception coverting native to h5")
     finally: 
