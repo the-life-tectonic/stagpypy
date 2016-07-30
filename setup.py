@@ -26,7 +26,7 @@ setup(
 	description='Python modules in support of StagYY',
 	author='Robert I. Petersen',
 	author_email='rpetersen@ucsd.edu', 
-	version=ver,
+	version='0.5.0',
 	scripts=['src/scripts/pardiff.py'],
 	package_dir={'stagyy': src},
 	packages=['stagyy','stagyy.ic','stagyy.image'], 
