@@ -173,6 +173,7 @@ def square_pixels(h5,img,Lx,Lz,px=None,pz=None):
         img.create_dataset('z', data=z_new, compression='gzip', compression_opts=4)
     
     if ssig.WALLTIME:
+        LOG.debug("Walltime hit.")
         return
 
     img_set=img['data']
