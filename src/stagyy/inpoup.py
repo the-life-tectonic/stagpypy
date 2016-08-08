@@ -6,9 +6,10 @@ import numpy as np
 import os
 import re
 import sys
+import io
 import struct
+from image import image2d
 from evtk.hl import pointsToVTK
-from image import image2d,viz
 import stagyy.signal as ssig
 import field as stag_field
 
@@ -47,28 +48,17 @@ def tracers_to_vtu(model,dest, overwrite=False):
         LOG.debug("data: %s",data)
         pointsToVTK(vtu_fileout,tracers[:,0],tracers[:,1],tracers[:,2],data=data)
 
-def render_field(data,img_dir,renderer_name,renderer_class=None,renderer_options={}):
-    gallery=viz.Gallery()
-    if renderer_class!=None:
-        gallery.register_renderer(renderer_name,renderer_class,renderer_options)
 
-    if ssig.WALLTIME:
-        return
-
-    h5_file=None
-    try:
-        for frame_num in range(data.shape[0]):
-            if ssig.WALLTIME:
-                break
-            img_file=gallery.get_img(img_dir,renderer_name,frame_num,{})
-            if img_file==None:
-                LOG.debug('Rendering frame %d',frame_num)
-                img_file=gallery.render_img(img_dir,renderer_name,frame_num,data[frame_num],{})
-                LOG.debug('Rendered as %s',img_file)
-            else:
-                LOG.debug('Frame %d already exists as %s',frame_num,img_file)
-    finally:
-        if h5_file: h5_file.close()
+def regular_grid(par,z):
+        Lz=par['geometry']['D_dimensional']
+        Lx=Lz*par['geometry']['aspect_ratio(1)']
+        LOG.debug('Dimensional shape %dx%d',Lx,Lz)
+        dL=np.diff(z).min()
+        LOG.debug('Smallest cell size %f',dL)
+        Pz=int(np.floor(Lz/dL))
+        Px=int(np.floor(Lx/dL))
+        LOG.debug('Interpolated grid size size (x,z) %dx%d',Px,Pz)
+        return Lx,Lz,Px,Pz
 
 def regularize_field(model,dest,f):
     """Interpolates a field that has grid refinement so that the grid is regular with a cell size of the smallest cell."""
@@ -88,17 +78,11 @@ def regularize_field(model,dest,f):
         try:
             h5_file=h5py.File(h5_filename,'a')
             LOG.debug('H5 itmes: %s',str(h5_file.items()))
+
+            Lx,Lz,Px,Pz=regular_grid(model.par,h5_file['z'])
+
             h5_img=h5py.File(img_filename,'a')
             LOG.debug('Image itmes: %s',str(h5_img.items()))
-            # TODO: implement squaring 3D
-            Lz=model.par['geometry']['D_dimensional']
-            Lx=Lz*model.par['geometry']['aspect_ratio(1)']
-            LOG.debug('Dimensional shape %dx%d',Lx,Lz)
-            dL=np.diff(h5_file['z']).min()
-            LOG.debug('Smallest cell size %f',dL)
-            Pz=np.floor(Lz/dL)
-            Px=np.floor(Lx/dL)
-            LOG.debug('Interpolated grid size size (x,z) %dx%d',Px,Pz)
             image2d.square_pixels(h5_file,h5_img,Lx,Lz,Px,Pz)
         finally:
             if h5_file: h5_file.close()
@@ -332,11 +316,10 @@ def read_native(filename,scalar=None):
     finally:
         f.close()
     return DATA_3D,istep,time,x,y,z,zg
-
-def read_tracers(filename,callback=lambda x: None):
+def read_tracers(filename,callback=None,buffering=8192):
     tracers=None
     LOG_TRA.debug("\nOpening %s"%filename)
-    f=open(filename);
+    f=io.open(filename,mode='rb',buffering=buffering);
 
     try:
         # Read the magic number
@@ -379,13 +362,20 @@ def read_tracers(filename,callback=lambda x: None):
             for var_num in range(ntracervar_in):
                 tracer_varname.append(read_string(f,16).strip())
                 LOG_TRA.debug('tracer_varname[%d]="%s"'%(var_num,tracer_varname[var_num]))
-        t=np.zeros(ntrg*ntracervar_in)
-        t=t.reshape(ntrg,ntracervar_in)
+
+        shape=(nb_in*ntrg.sum(),ntracervar_in)
+        LOG_TRA.debug('memmap shape %s'%repr(shape))
+        t=np.memmap(filename+'.mmap',dtype=np.float32,mode='w+',shape=shape)
         
         for ib in range(nb_in):
-            for i in range(ntrg):
-                t[i]=read_float32(f,ntracervar_in)
-                callback(100*float(i)/float(ntrg))
+            page_offset=0
+            page_size=min(ntrg[ib],10**20)
+            while page_offset<ntrg[ib]:
+                page_size=min(page_size,ntrg[ib]-page_offset)
+                values=read_float32(f,page_size*ntracervar_in)
+                values=values.reshape(page_size,ntracervar_in)
+                t[ib*ntrg[ib]+page_offset:ib*ntrg[ib]+page_offset+page_size]=values[:]
+                page_offset=+page_size
         tracers={}
         tracers['magic']=magic
         tracers['blocks']=nb_in
