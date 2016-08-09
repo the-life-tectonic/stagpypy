@@ -369,13 +369,13 @@ def read_tracers(filename,callback=None,buffering=8192):
         
         for ib in range(nb_in):
             page_offset=0
-            page_size=min(ntrg[ib],10**20)
+            page_size=min(ntrg[ib],8192)
             while page_offset<ntrg[ib]:
                 page_size=min(page_size,ntrg[ib]-page_offset)
                 values=read_float32(f,page_size*ntracervar_in)
                 values=values.reshape(page_size,ntracervar_in)
                 t[ib*ntrg[ib]+page_offset:ib*ntrg[ib]+page_offset+page_size]=values[:]
-                page_offset=+page_size
+                page_offset+=page_size
         tracers={}
         tracers['magic']=magic
         tracers['blocks']=nb_in
